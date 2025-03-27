@@ -1,0 +1,21 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# Your rule content
+
+-Guide Line
+Next.js 15.2.2(latest Version) with App Router
+TypeScript with strict typing
+MongoDB for database
+Database Name is english-learning(alreday created)
+Tailwind CSS and Shadcn UI
+Make modern looking website
+Cloudinary for image storage
+Shadcn UI for graph/charts
+Make .env.local, then I will input actual keys later
+The website should be fully Responsive(PC, Tablet and Smartphone)
+Since this service is for Japanese, UI should be in Japanese
+Use Deepseek chat for generating English quiz/writing topic and giving a feedback to the students
