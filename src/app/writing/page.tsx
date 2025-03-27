@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 
 interface WritingEntry {
   _id: string;
@@ -14,9 +15,67 @@ interface WritingEntry {
 }
 
 interface UserProfile {
+  name: string;
   englishLevel: string;
   job: string;
   goal: string;
+  preferredTeacher: 'hiroshi' | 'reiko' | 'iwao' | 'taro';
+}
+
+const teacherInfo = {
+  hiroshi: {
+    name: 'ひろし先生',
+    image: '/hiroshi.png',
+    messageTemplate: 'が{name}はんに合ったトピックを作るからそれに合った英文を書いてや！結果を楽しみにしてるで！',
+    prefix: '俺'
+  },
+  reiko: {
+    name: '玲子先生',
+    image: '/reiko.png',
+    messageTemplate: 'が{name}さんに合ったトピックを作りますのでそれに合った英文を書いて下さいね！結果を楽しみにしてますわ！',
+    prefix: 'わたくし'
+  },
+  iwao: {
+    name: '巌男先生',
+    image: '/iwao.png',
+    messageTemplate: 'が{name}に合ったトピックを作るからそれに合った英文を書いてこい！おい、間違ってもガッカリさせんじゃねーぞ！',
+    prefix: '俺'
+  },
+  taro: {
+    name: '太郎先生',
+    image: '/taro.png',
+    messageTemplate: 'が{name}さんに合ったトピックを作るのでそれに合った英文を書いて下さい。結果を楽しみにしてますね。',
+    prefix: '僕'
+  }
+};
+
+interface TeacherMessageProps {
+  teacher: 'hiroshi' | 'reiko' | 'iwao' | 'taro';
+  userName: string;
+}
+
+function TeacherMessage({ teacher, userName }: TeacherMessageProps) {
+  const info = teacherInfo[teacher];
+  const message = info.prefix + info.messageTemplate.replace('{name}', userName);
+
+  return (
+    <div className="flex items-center space-x-4 mb-6 bg-white p-4 rounded-lg shadow">
+      <div className="flex-shrink-0 w-16 h-16 relative">
+        <div className="absolute inset-0 rounded-full overflow-hidden">
+          <Image
+            src={info.image}
+            alt={info.name}
+            fill
+            style={{ objectFit: 'cover' }}
+          />
+        </div>
+      </div>
+      <div className="flex-1">
+        <h3 className="font-medium text-gray-900">{info.name}</h3>
+        <p className="text-gray-600">{message}</p>
+      </div>
+    </div>
+  );
 }
 
 export default function WritingPage() {
@@ -56,9 +115,11 @@ export default function WritingPage() {
       if (response.ok) {
         const userData = await response.json();
         setUserProfile({
+          name: userData.name || '',
           englishLevel: userData.englishLevel || 'beginner',
           job: userData.job || '',
           goal: userData.goal || '',
+          preferredTeacher: userData.preferredTeacher || 'taro',
         });
         
         // If profile is incomplete, show a message
@@ -231,164 +292,55 @@ export default function WritingPage() {
 
   const renderContent = () => {
     if (!isTopicGenerated) {
-      return (
-        <div className="text-center py-10">
-          <button
-            onClick={generateTopic}
-            disabled={isGeneratingTopic}
-            className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-          >
-            {isGeneratingTopic ? 'トピック生成中...' : 'ライティングを始める'}
-          </button>
-          {isGeneratingTopic && (
-            <div className="mt-8 flex flex-col items-center">
-              <div className="animate-pulse flex space-x-4 mb-4">
-                <div className="h-12 w-12 bg-blue-400 rounded-full animate-bounce"></div>
-                <div className="h-12 w-12 bg-blue-500 rounded-full animate-bounce delay-100"></div>
-                <div className="h-12 w-12 bg-blue-600 rounded-full animate-bounce delay-200"></div>
-              </div>
-              <p className="text-lg font-medium text-gray-700 mt-2">AIが現在作成中です・・・</p>
-              <p className="text-sm text-gray-500 mt-1">少々お待ちください</p>
-            </div>
-          )}
-          {message && !isGeneratingTopic && (
-            <div className="mt-4 text-sm text-amber-600">{message}</div>
-          )}
-        </div>
-      );
+      return null;
     }
 
     return (
       <div className="space-y-6">
-        <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">トピック:</h2>
-          <div className="p-4 bg-gray-50 rounded-md text-lg mb-6">
-            {topic}
-          </div>
-
-          <h2 className="text-lg font-medium text-gray-900 mb-4">
-            このトピックについて英語で書いてください:
-          </h2>
-          <textarea
-            value={userContent}
-            onChange={handleTextChange}
-            disabled={isFeedbackReceived || isSubmitting}
-            className="w-full h-40 p-4 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
-            placeholder="ここに英語で文章を入力..."
+        {userProfile && (
+          <TeacherMessage
+            teacher={userProfile.preferredTeacher}
+            userName={userProfile.name}
           />
-          
-          <div className="mt-2 flex justify-end">
-            <span className={`text-sm ${wordCount < 20 ? 'text-red-500' : wordCount > 100 ? 'text-green-500' : 'text-gray-500'}`}>
-              {wordCount} 単語
-            </span>
+        )}
+        
+        <div className="bg-white shadow rounded-lg p-6">
+          <div className="mb-4">
+            <h2 className="text-lg font-medium text-gray-900 mb-2">トピック</h2>
+            <p className="text-gray-600">{topic}</p>
           </div>
 
-          {!isFeedbackReceived ? (
-            <div className="mt-6 flex flex-col sm:flex-row justify-between gap-4">
-              <button
-                onClick={resetWriting}
-                className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                別のトピックを試す
-              </button>
+          <div className="mb-4">
+            <label htmlFor="content" className="block text-sm font-medium text-gray-700 mb-2">
+              英作文
+            </label>
+            <textarea
+              id="content"
+              rows={6}
+              value={userContent}
+              onChange={(e) => {
+                setUserContent(e.target.value);
+                // Count words (split by whitespace)
+                setWordCount(e.target.value.trim().split(/\s+/).filter(Boolean).length);
+              }}
+              className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              placeholder="ここに英語で文章を書いてください..."
+              disabled={isFeedbackReceived}
+            />
+            <p className="mt-1 text-sm text-gray-500">
+              単語数: {wordCount} words {wordCount < 5 && wordCount > 0 && '(最低5単語必要です)'}
+            </p>
+          </div>
+
+          {!isFeedbackReceived && (
+            <div className="flex justify-end">
               <button
                 onClick={submitWriting}
-                disabled={isSubmitting || !userContent.trim()}
-                className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                disabled={isSubmitting || wordCount < 5}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
               >
-                {isSubmitting ? '提出中...' : '提出して添削を受ける'}
+                {isSubmitting ? '送信中...' : 'フィードバックを受け取る'}
               </button>
-            </div>
-          ) : (
-            <div className="mt-6 space-y-6">
-              <div className="border-t border-gray-200 pt-6">
-                <h2 className="text-lg font-medium text-gray-900 mb-4">フィードバック:</h2>
-                <div className="p-6 bg-gradient-to-br from-blue-50 to-sky-50 rounded-lg shadow-sm border border-blue-100">
-                  <div className="whitespace-pre-line prose prose-blue max-w-none text-gray-800">
-                    {feedback.split('\n').map((line, index) => {
-                      // Check if the line contains a section number (like "1.", "2.")
-                      const sectionMatch = line.match(/^(\d+)\./);
-                      
-                      if (sectionMatch) {
-                        return (
-                          <div key={index} className="mt-4 first:mt-0">
-                            <h3 className="text-blue-700 font-medium">{line}</h3>
-                          </div>
-                        );
-                      }
-                      
-                      // Check if line contains emphasis (between ** or __) and style it
-                      const styledLine = line.replace(
-                        /(\*\*|__)(.*?)(\*\*|__)/g, 
-                        '<span class="font-bold text-blue-800">$2</span>'
-                      );
-                      
-                      return (
-                        <div 
-                          key={index} 
-                          className="mb-2"
-                          dangerouslySetInnerHTML={{ __html: styledLine }}
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h2 className="text-lg font-medium text-gray-900 mb-4">スコア:</h2>
-                <div className="flex items-center">
-                  <div
-                    className={`relative text-2xl font-bold rounded-full w-20 h-20 flex items-center justify-center shadow-md transition-all duration-300 ${
-                      score >= 80
-                        ? 'bg-gradient-to-br from-green-400 to-green-600 text-white'
-                        : score >= 60
-                        ? 'bg-gradient-to-br from-yellow-300 to-yellow-500 text-white'
-                        : 'bg-gradient-to-br from-red-300 to-red-500 text-white'
-                    }`}
-                  >
-                    <div className="absolute inset-0 rounded-full bg-white opacity-20"></div>
-                    {score}
-                  </div>
-                  <div className="ml-6 text-base">
-                    <div className={`font-medium ${
-                      score >= 80
-                        ? 'text-green-600'
-                        : score >= 60
-                        ? 'text-yellow-600'
-                        : 'text-red-600'
-                    }`}>
-                      {score >= 90
-                        ? '素晴らしい！完璧に近い出来です！'
-                        : score >= 80
-                        ? '優れた出来栄えです！'
-                        : score >= 70
-                        ? '良い出来です！'
-                        : score >= 60
-                        ? 'まずまずの出来です！'
-                        : score >= 50
-                        ? 'もう少し頑張りましょう！'
-                        : '基本から見直してみましょう！'}
-                    </div>
-                    <div className="text-sm text-gray-500 mt-1">
-                      {score >= 80
-                        ? '文法や表現がしっかりしています。'
-                        : score >= 60
-                        ? '基本はできていますが、改善の余地があります。'
-                        : '基礎から丁寧に学び直しましょう。'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end">
-                <button
-                  onClick={resetWriting}
-                  className="inline-flex items-center justify-center w-full sm:w-auto px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  新しいライティングを始める
-                </button>
-              </div>
             </div>
           )}
 
@@ -404,6 +356,116 @@ export default function WritingPage() {
             </div>
           )}
         </div>
+
+        {isFeedbackReceived && feedback && (
+          <div className="bg-white shadow rounded-lg p-6">
+            <h2 className="text-lg font-medium text-gray-900 mb-4">フィードバック</h2>
+            <div className="prose max-w-none whitespace-pre-line text-gray-600">
+              {feedback}
+            </div>
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <p className="text-gray-700">
+                スコア: <span className="font-medium">{score}</span>/100
+              </p>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={() => {
+                  setIsTopicGenerated(false);
+                  setIsFeedbackReceived(false);
+                  setUserContent('');
+                  setFeedback('');
+                  setScore(0);
+                  setWordCount(0);
+                  setTopic('');
+                }}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                新しいトピックで書く
+              </button>
+            </div>
+          </div>
+        )}
+
+        {showHistory && previousEntries.length > 0 && (
+          <div className="mt-8">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-medium text-gray-900">過去のライティング</h2>
+              <button
+                onClick={() => setShowHistory(false)}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                履歴を隠す
+              </button>
+            </div>
+            <div className="space-y-4">
+              {previousEntries
+                .slice((currentPage - 1) * entriesPerPage, currentPage * entriesPerPage)
+                .map((entry) => (
+                  <div key={entry._id} className="bg-white shadow rounded-lg p-6">
+                    <div className="flex items-start space-x-4 mb-4">
+                      <div className="flex-shrink-0 w-12 h-12 relative">
+                        <div className="absolute inset-0 rounded-full overflow-hidden">
+                          <Image
+                            src={teacherInfo[userProfile?.preferredTeacher || 'taro'].image}
+                            alt={teacherInfo[userProfile?.preferredTeacher || 'taro'].name}
+                            fill
+                            style={{ objectFit: 'cover' }}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-medium text-gray-900 mb-1">
+                          {teacherInfo[userProfile?.preferredTeacher || 'taro'].name}からのフィードバック
+                        </h3>
+                        <p className="text-sm text-gray-500">
+                          {new Date(entry.createdAt).toLocaleString('ja-JP')}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="border-t border-gray-200 pt-4">
+                      <h3 className="font-medium text-gray-900 mb-2">トピック</h3>
+                      <p className="text-gray-600 mb-4">{entry.topic}</p>
+                      
+                      <h3 className="font-medium text-gray-900 mb-2">あなたの回答</h3>
+                      <p className="text-gray-600 mb-4 whitespace-pre-line">{entry.content}</p>
+                      
+                      <h3 className="font-medium text-gray-900 mb-2">フィードバック</h3>
+                      <div className="prose max-w-none whitespace-pre-line text-gray-600 mb-4">
+                        {entry.feedback}
+                      </div>
+                      
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                        <p className="text-gray-700">
+                          スコア: <span className="font-medium">{entry.score}</span>/100
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+            {previousEntries.length > entriesPerPage && (
+              <div className="mt-4 flex justify-center">
+                <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
+                  {Array.from({ length: Math.ceil(previousEntries.length / entriesPerPage) }).map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setCurrentPage(i + 1)}
+                      className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                        currentPage === i + 1
+                          ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                          : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                      }`}
+                    >
+                      {i + 1}
+                    </button>
+                  ))}
+                </nav>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -426,31 +488,55 @@ export default function WritingPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+    <div className="container mx-auto px-4 py-8">
+      <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">ライティング練習</h1>
-        
         {previousEntries.length > 0 && (
           <button
             onClick={() => setShowHistory(!showHistory)}
-            className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
           >
             {showHistory ? '履歴を隠す' : '過去のライティングを表示'}
           </button>
         )}
       </div>
 
-      <p className="text-gray-600">
-        トピックに基づいて英語で文章を書いてみましょう。AIがフィードバックを提供します。
-      </p>
-
       {message && (
-        <div className="bg-amber-50 border border-amber-400 text-amber-700 px-4 py-3 rounded whitespace-pre-line">
+        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded mb-6">
           {message}
         </div>
       )}
 
-      {renderContent()}
+      {!isTopicGenerated ? (
+        <div className="bg-white shadow rounded-lg p-6 mb-6">
+          {userProfile && (
+            <TeacherMessage
+              teacher={userProfile.preferredTeacher}
+              userName={userProfile.name}
+            />
+          )}
+          <button
+            onClick={generateTopic}
+            disabled={isGeneratingTopic}
+            className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+          >
+            {isGeneratingTopic ? 'トピックを生成中...' : 'ライティングを始める'}
+          </button>
+          {isGeneratingTopic && (
+            <div className="mt-8 flex flex-col items-center">
+              <div className="animate-pulse flex space-x-4 mb-4">
+                <div className="h-12 w-12 bg-blue-400 rounded-full animate-bounce"></div>
+                <div className="h-12 w-12 bg-blue-500 rounded-full animate-bounce delay-100"></div>
+                <div className="h-12 w-12 bg-blue-600 rounded-full animate-bounce delay-200"></div>
+              </div>
+              <p className="text-lg font-medium text-gray-700 mt-2">AIが現在作成中です・・・</p>
+              <p className="text-sm text-gray-500 mt-1">少々お待ちください</p>
+            </div>
+          )}
+        </div>
+      ) : (
+        renderContent()
+      )}
 
       {showHistory && previousEntries.length > 0 && (
         <div className="bg-white shadow rounded-lg overflow-hidden mt-8">

@@ -60,7 +60,7 @@ export async function PUT(
       );
     }
 
-    const { name, englishLevel, job, goal } = await request.json();
+    const { name, englishLevel, job, goal, preferredTeacher } = await request.json();
 
     // Validate inputs
     if (!name) {
@@ -86,6 +86,7 @@ export async function PUT(
     if (englishLevel) user.englishLevel = englishLevel;
     if (job !== undefined) user.job = job;
     if (goal !== undefined) user.goal = goal;
+    if (preferredTeacher !== undefined) user.preferredTeacher = preferredTeacher;
     
     await user.save();
     
@@ -98,6 +99,7 @@ export async function PUT(
         englishLevel: user.englishLevel,
         job: user.job,
         goal: user.goal,
+        preferredTeacher: user.preferredTeacher,
       }
     });
   } catch (error) {

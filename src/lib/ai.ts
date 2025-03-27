@@ -174,16 +174,68 @@ export async function generateEnglishQuiz(
  * Provide feedback on a student's English writing
  * @param text - The student's text to analyze
  * @param feedbackType - Type of feedback requested (grammar, style, etc.)
+ * @param teacher - The preferred teacher character ('hiroshi', 'reiko', 'iwao', 'taro')
  * @returns Detailed feedback
  */
-export async function provideWritingFeedback(text: string, feedbackType: string = 'comprehensive') {
+export async function provideWritingFeedback(
+  text: string, 
+  feedbackType: string = 'comprehensive',
+  teacher: string = 'taro'
+) {
+  let teacherPrompt = '';
+  
+  switch(teacher) {
+    case 'hiroshi':
+      teacherPrompt = `
+        フィードバックは関西弁で漫才風の明るい口調で記述してください。
+        初心者あるあるの文法ぐちゃぐちゃの英文でも気さくにチェックしてアドバイスしてください。
+        口調はちょっとトゲがあるかもだけど心根は優しい先生として回答してください。
+        「やねん」「〜やで」「〜ちゃう？」などの関西弁を使ってください。
+        
+        例: 「おっ！この文法ちょっと違うかもしれへんな。でもな、この部分はええ感じやで！」
+      `;
+      break;
+    case 'reiko':
+      teacherPrompt = `
+        フィードバックは「ですわ」口調の上品な女性として記述してください。
+        頭脳明晰、容姿端麗で一見接しにくいように感じるけど生徒想いの優しい先生として回答してください。
+        「ですわ」「〜でございますわ」「わたくし」などの言葉を使ってください。
+        分かりやすく丁寧に、特に初心者の方には文法で躓きやすい部分を手取り足取り教えるスタイルで回答してください。
+        
+        例: 「この文法の使い方は少し異なりますわ。このように書くとより自然ですわ。」
+      `;
+      break;
+    case 'iwao':
+      teacherPrompt = `
+        フィードバックは昭和のスタイルを貫く厳格な男性として記述してください。
+        文法ミスを厳しく指摘しますが、生徒想いがとても強い先生として回答してください。
+        「〜じゃねーぞ」「テメー」「〜するんだよ！」などの言葉を使い、時に厳しい言葉も使いますが、
+        その厳しさは生徒を成長させるためであることを示してください。
+        
+        例: 「この文法、なんだこれは！こんなんじゃダメだ！ここはこう書くんだよ！でも、この部分は良く書けている。その調子だ！」
+      `;
+      break;
+    case 'taro':
+    default:
+      teacherPrompt = `
+        フィードバックは標準語で理詰めで丁寧な口調で記述してください。
+        若手の先生として、欠点らしい欠点も無く、どんなタイプの生徒でも上手く対応するスタイルで回答してください。
+        「〜ですね」「〜しましょう」「〜だと思います」などの丁寧な言葉を使い、
+        文法の間違いを論理的に、かつ励ましながら説明してください。
+        
+        例: 「ここの文法は少し異なります。このように書くとより自然な表現になりますよ。」
+      `;
+      break;
+  }
+
   const prompt = `
     以下の英文を添削し、${feedbackType}フィードバックを提供してください:
     
     ${text}
     
-    フィードバックは関西弁で漫才風に記述してください。
-    もしもAIが作成したトピックとユーザーが作成した英文が関連性がない場合は、ユーザーをきつく𠮟って下さい。
+    ${teacherPrompt}
+    
+    もしもAIが作成したトピックとユーザーが作成した英文が関連性がない場合は、それについても指摘してください。
     
     以下のフォーマットで回答してください:
     
@@ -199,30 +251,33 @@ export async function provideWritingFeedback(text: string, feedbackType: string 
     
     (ここに表現の改善点)
     
-    4. 強みと弱み
-    
-    (ここに強みと弱み)
-    
-    5. 上達のためのアドバイス
-    
-    (ここにアドバイス)
-
-    6. 総合点数
+    4. 採点 (100点満点)
     
     (ここに点数)
     
-    強調したい部分は **このように** または __このように__ 記述してください。
+    5. 励ましのコメント
+    
+    (ここに励ましのコメント)
   `;
 
   try {
-    return await generateAIResponse([{ role: 'user', content: prompt }], {
-      maxTokens: 800,
+    // Generate the feedback using the AI
+    const systemPrompt = `
+      あなたは日本人の英語学習者のための添削を行う英語教師です。
+      ${teacherPrompt}
+      フィードバックは具体的で分かりやすく、学習者の英語レベル向上に役立つものにしてください。
+    `;
+    
+    const response = await generateAIResponse([{ role: 'user', content: prompt }], {
+      maxTokens: 1500,
       temperature: 0.7,
-      systemPrompt: 'あなたは英語教師です。学生の英作文に対して、建設的で詳細なフィードバックを提供してください。批判的すぎず、励ましながらも正確な指導をしてください。'
+      systemPrompt
     });
+    
+    return response;
   } catch (error: any) {
     console.error('Error providing writing feedback:', error);
-    return '申し訳ありませんが、フィードバックの生成中にエラーが発生しました。後でもう一度お試しください。';
+    return `申し訳ありません。フィードバックの生成中にエラーが発生しました。後でもう一度お試しください。\n\nエラー: ${error.message || '不明なエラー'}`;
   }
 }
 

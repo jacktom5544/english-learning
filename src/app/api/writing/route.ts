@@ -29,8 +29,8 @@ async function generateTopic(level: string, job: string, goal: string): Promise<
     - 学習者のレベルに適している
     - 可能であれば職業や目標に関連している
     - シンプルで明確（1〜2文程度）
-    - 英語レベルが”超初心者”と”初心者”の場合は日本語で記述
-    - 英語レベルが”中級者”と”中上級者”と”上級者”の場合は英語で記述
+    - 英語レベルが"超初心者"と"初心者"の場合は日本語で記述
+    - 英語レベルが"中級者"と"中上級者"と"上級者"の場合は英語で記述
     - 毎回トピックを変えてください
     トピックのみを返してください。追加の説明、番号付け、引用符は不要です。
   `;
@@ -84,9 +84,14 @@ async function generateTopic(level: string, job: string, goal: string): Promise<
 }
 
 // Generate feedback for English writing using DeepSeek AI
-async function generateFeedback(level: string, topic: string, content: string): Promise<{feedback: string, score: number}> {
+async function generateFeedback(
+  level: string, 
+  topic: string, 
+  content: string,
+  teacher: string = 'taro'
+): Promise<{feedback: string, score: number}> {
   try {
-    console.log(`Generating feedback for level: ${level}`);
+    console.log(`Generating feedback for level: ${level}, teacher: ${teacher}`);
     console.log(`Content length: ${content.length} chars`);
     
     if (!content || content.trim().length < 10) {
@@ -97,7 +102,7 @@ async function generateFeedback(level: string, topic: string, content: string): 
     }
 
     try {
-      const feedbackText = await provideWritingFeedback(content, "comprehensive") || '';
+      const feedbackText = await provideWritingFeedback(content, "comprehensive", teacher) || '';
       
       // Extract score from feedback (assuming the AI includes a score in the feedback)
       let score = 70; // Default score
@@ -210,12 +215,20 @@ export async function POST(req: NextRequest) {
         { status: 401 }
       );
     }
+
+    const { topic, content } = await req.json();
     
+    if (!topic || !content) {
+      return NextResponse.json(
+        { error: 'トピックと文章が必要です' },
+        { status: 400 }
+      );
+    }
+
     await connectDB();
     
-    // Get user info for level
+    // Get user's English level and preferred teacher
     const user = await User.findById(session.user.id);
-    
     if (!user) {
       return NextResponse.json(
         { error: 'ユーザーが見つかりません' },
@@ -223,49 +236,30 @@ export async function POST(req: NextRequest) {
       );
     }
     
-    const data = await req.json();
-    const { topic, content } = data;
+    // Generate feedback using the appropriate teacher character
+    const { feedback: feedbackText, score } = await generateFeedback(
+      user.englishLevel || 'intermediate', 
+      topic, 
+      content,
+      user.preferredTeacher || 'taro'
+    );
     
-    if (!topic || !content) {
-      return NextResponse.json(
-        { error: 'トピックと内容が必要です' },
-        { status: 400 }
-      );
-    }
+    // Create a new writing entry
+    const writingEntry = new Writing({
+      userId: session.user.id,
+      topic,
+      content,
+      feedback: feedbackText,
+      score
+    });
     
-    try {
-      // Generate feedback
-      const level = user.englishLevel || 'intermediate';
-      const feedbackResult = await generateFeedback(level, topic, content);
-      
-      // Save the writing
-      const writing = new Writing({
-        userId: session.user.id,
-        topic,
-        content,
-        feedback: feedbackResult.feedback,
-        score: feedbackResult.score,
-        createdAt: new Date()
-      });
-      
-      await writing.save();
-      
-      return NextResponse.json({
-        _id: writing._id,
-        topic: writing.topic,
-        content: writing.content,
-        feedback: writing.feedback,
-        score: writing.score,
-        createdAt: writing.createdAt
-      });
-    } catch (feedbackError) {
-      console.error('Error in feedback generation:', feedbackError);
-      
-      // Provide a fallback response
-      return NextResponse.json({
-        error: 'フィードバックの生成に失敗しました。しばらくしてからもう一度お試しください。'
-      }, { status: 500 });
-    }
+    await writingEntry.save();
+    
+    return NextResponse.json({
+      _id: writingEntry._id,
+      feedback: feedbackText,
+      score
+    });
   } catch (error) {
     console.error('Error in writing POST route:', error);
     return NextResponse.json(

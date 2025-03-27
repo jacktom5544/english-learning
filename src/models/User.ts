@@ -9,6 +9,7 @@ export interface IUser extends mongoose.Document {
   englishLevel: 'super_beginner' | 'beginner' | 'intermediate' | 'upper_intermediate' | 'advanced';
   job?: string;
   goal?: string;
+  preferredTeacher?: 'hiroshi' | 'reiko' | 'iwao' | 'taro';
   role: 'free' | 'paid' | 'admin';
   createdAt: Date;
   updatedAt: Date;
@@ -50,6 +51,11 @@ const UserSchema = new Schema<IUser>(
     goal: {
       type: String,
       default: '',
+    },
+    preferredTeacher: {
+      type: String,
+      enum: ['hiroshi', 'reiko', 'iwao', 'taro'],
+      default: 'taro',
     },
     role: {
       type: String,
