@@ -100,7 +100,7 @@ export default function WritingPage() {
   const [wordCount, setWordCount] = useState(0);
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
-  const entriesPerPage = 3;
+  const entriesPerPage = 2;
 
   useEffect(() => {
     if (session?.user?.id) {
