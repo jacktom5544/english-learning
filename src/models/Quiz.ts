@@ -7,9 +7,19 @@ export interface IQuizQuestion {
   explanation: string;
 }
 
+export interface IQuizResult {
+  question: string;
+  choices: string[];
+  correctIndex: number;
+  explanation: string;
+  userAnswer: number | null;
+  isCorrect: boolean;
+}
+
 export interface IQuiz extends mongoose.Document {
   userId: mongoose.Types.ObjectId;
   questions: IQuizQuestion[];
+  results?: IQuizResult[];
   completed: boolean;
   score: number;
   createdAt: Date;
@@ -39,6 +49,34 @@ const QuizSchema = new Schema<IQuiz>(
         },
         explanation: {
           type: String,
+          required: true,
+        },
+      },
+    ],
+    results: [
+      {
+        question: {
+          type: String,
+          required: true,
+        },
+        choices: {
+          type: [String],
+          required: true,
+        },
+        correctIndex: {
+          type: Number,
+          required: true,
+        },
+        explanation: {
+          type: String,
+          required: true,
+        },
+        userAnswer: {
+          type: Number,
+          default: null,
+        },
+        isCorrect: {
+          type: Boolean,
           required: true,
         },
       },

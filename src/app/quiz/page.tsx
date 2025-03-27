@@ -11,6 +11,15 @@ interface QuizQuestion {
   explanation: string;
 }
 
+interface QuizResult {
+  question: string;
+  choices: string[];
+  correctIndex: number;
+  explanation: string;
+  userAnswer: number | null;
+  isCorrect: boolean;
+}
+
 interface UserProfile {
   englishLevel: string;
   job: string;
@@ -31,6 +40,8 @@ export default function QuizPage() {
   const [score, setScore] = useState(0);
   const [message, setMessage] = useState('');
   const [quizId, setQuizId] = useState<string | null>(null);
+  const [quizResults, setQuizResults] = useState<QuizResult[]>([]);
+  const [markedVocabularies, setMarkedVocabularies] = useState<Record<number, boolean | null>>({});
 
   useEffect(() => {
     if (session?.user?.id) {
@@ -69,6 +80,8 @@ export default function QuizPage() {
   const generateQuiz = async () => {
     setIsGenerating(true);
     setMessage('');
+    setQuizResults([]);
+    setMarkedVocabularies({});
 
     try {
       console.log('Generating quiz...');
@@ -81,6 +94,7 @@ export default function QuizPage() {
           englishLevel: userProfile?.englishLevel,
           job: userProfile?.job,
           goal: userProfile?.goal,
+          count: 20, // Request 20 quiz questions
         }),
       });
 
@@ -136,8 +150,21 @@ export default function QuizPage() {
     setSelectedAnswer(answerIndex);
     setIsAnswered(true);
     
+    // Record the result
+    const isCorrect = answerIndex === currentQuestion.correctIndex;
+    
+    // Update quiz results
+    setQuizResults(prevResults => [
+      ...prevResults,
+      {
+        ...currentQuestion,
+        userAnswer: answerIndex,
+        isCorrect,
+      }
+    ]);
+    
     // If answer is correct, increment score
-    if (answerIndex === currentQuestion.correctIndex) {
+    if (isCorrect) {
       setScore(prevScore => prevScore + 1);
     }
   };
@@ -170,6 +197,7 @@ export default function QuizPage() {
         body: JSON.stringify({
           completed: true,
           score: score,
+          results: quizResults,
         }),
       });
       
@@ -184,11 +212,11 @@ export default function QuizPage() {
     }
   };
 
-  const markVocabulary = async (remembered: boolean) => {
-    if (!session?.user?.id || currentQuestionIndex >= questions.length) return;
+  const markVocabulary = async (index: number, remembered: boolean) => {
+    if (!session?.user?.id) return;
     
-    const currentQuestion = questions[currentQuestionIndex];
-    if (!currentQuestion) return;
+    const result = quizResults[index];
+    if (!result) return;
     
     try {
       // Save the vocabulary to the database
@@ -198,9 +226,9 @@ export default function QuizPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          word: currentQuestion.question,
-          translation: currentQuestion.choices[currentQuestion.correctIndex],
-          explanation: currentQuestion.explanation,
+          word: result.question,
+          translation: result.choices[result.correctIndex],
+          explanation: result.explanation,
           isRemembered: remembered,
         }),
       });
@@ -210,12 +238,23 @@ export default function QuizPage() {
         throw new Error(errorData?.error || 'Failed to save vocabulary');
       }
       
-      // Go to next question
-      handleNextQuestion();
+      // Update marked vocabularies state
+      setMarkedVocabularies(prev => ({
+        ...prev,
+        [index]: remembered
+      }));
+      
     } catch (error: any) {
       console.error('Failed to mark vocabulary:', error);
       setMessage(`単語の保存に失敗しました。${error.message || 'しばらくしてからもう一度お試しください。'}`);
     }
+  };
+
+  const startNewQuiz = () => {
+    setQuizResults([]);
+    setMarkedVocabularies({});
+    setQuizCompleted(false);
+    generateQuiz();
   };
 
   const renderQuizContent = () => {
@@ -227,7 +266,7 @@ export default function QuizPage() {
             disabled={isGenerating}
             className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
           >
-            {isGenerating ? 'クイズを生成中...' : 'クイズを始める'}
+            {isGenerating ? 'クイズを生成中...' : 'クイズを始める (20問)'}
           </button>
           {message && (
             <div className="mt-4 text-sm text-amber-600">{message}</div>
@@ -238,15 +277,77 @@ export default function QuizPage() {
 
     if (quizCompleted) {
       return (
-        <div className="bg-white shadow rounded-lg p-6 text-center">
-          <h2 className="text-2xl font-bold mb-4">クイズ完了！</h2>
-          <p className="text-xl mb-4">あなたのスコア: {score} / {questions.length}</p>
-          <button
-            onClick={generateQuiz}
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            新しいクイズを始める
-          </button>
+        <div className="bg-white shadow rounded-lg p-6">
+          <div className="text-center mb-6">
+            <h2 className="text-2xl font-bold mb-2">クイズ完了！</h2>
+            <p className="text-xl mb-4">あなたのスコア: {score} / {questions.length}</p>
+          </div>
+          
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold mb-3">結果一覧</h3>
+            <div className="space-y-4">
+              {quizResults.map((result, index) => (
+                <div 
+                  key={index} 
+                  className={`p-4 rounded-lg border ${
+                    result.isCorrect 
+                      ? 'border-green-200 bg-green-50' 
+                      : 'border-red-200 bg-red-50'
+                  }`}
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <p className="font-medium">{index + 1}. {result.question}</p>
+                      <p className="text-gray-700 mt-1">
+                        正解: {result.choices[result.correctIndex]}
+                      </p>
+                      {!result.isCorrect && result.userAnswer !== null && (
+                        <p className="text-red-600 mt-1">
+                          あなたの回答: {result.choices[result.userAnswer]}
+                        </p>
+                      )}
+                      <p className="text-gray-600 text-sm mt-2">{result.explanation}</p>
+                    </div>
+                    <div className="ml-4 flex space-x-2">
+                      {markedVocabularies[index] === undefined ? (
+                        <>
+                          <button
+                            onClick={() => markVocabulary(index, true)}
+                            className="px-3 py-1 bg-green-600 text-white text-xs rounded-md hover:bg-green-700"
+                          >
+                            覚えた
+                          </button>
+                          <button
+                            onClick={() => markVocabulary(index, false)}
+                            className="px-3 py-1 bg-amber-600 text-white text-xs rounded-md hover:bg-amber-700"
+                          >
+                            すぐに忘れそう
+                          </button>
+                        </>
+                      ) : (
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          markedVocabularies[index] 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {markedVocabularies[index] ? '覚えた' : 'すぐに忘れそう'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          
+          <div className="flex justify-center">
+            <button
+              onClick={startNewQuiz}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              新しいクイズを始める
+            </button>
+          </div>
         </div>
       );
     }
@@ -291,20 +392,7 @@ export default function QuizPage() {
 
         {isAnswered && (
           <div className="flex justify-between">
-            <div className="space-x-3">
-              <button
-                onClick={() => markVocabulary(true)}
-                className="px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-              >
-                覚えた
-              </button>
-              <button
-                onClick={() => markVocabulary(false)}
-                className="px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-amber-600 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500"
-              >
-                すぐに忘れそう
-              </button>
-            </div>
+            <div></div>
             <button
               onClick={handleNextQuestion}
               className="px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
@@ -325,7 +413,7 @@ export default function QuizPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">英単語クイズ</h1>
       <p className="text-gray-600">
-        あなたの英語レベル、職業、目標に合わせた英単語クイズを生成します。
+        あなたの英語レベル、職業、目標に合わせた英単語クイズを生成します。20問のクイズに答えた後、結果を確認できます。
       </p>
       {message && (
         <div className="bg-amber-50 border border-amber-400 text-amber-700 px-4 py-3 rounded">

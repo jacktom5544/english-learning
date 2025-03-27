@@ -77,30 +77,80 @@ export async function generateAIResponse(
  * Generate an English quiz based on a topic/level
  * @param topic - Quiz topic
  * @param level - Difficulty level (beginner, intermediate, advanced)
+ * @param count - Number of quiz questions to generate (default 10, max 20)
  * @returns The generated quiz
  */
-export async function generateEnglishQuiz(topic: string, level: string) {
+export async function generateEnglishQuiz(topic: string, level: string, count: number = 10) {
+  // Ensure count is within reasonable limits
+  const questionCount = Math.min(Math.max(count, 1), 20);
+  
   const prompt = `
     制作条件: 
     - トピック: ${topic}
     - レベル: ${level}
+    - 問題数: ${questionCount}問（全て異なる英単語を使用すること）
     - 言語: 日本語と英語を併記
     
     以下の形式で英語クイズを作成してください:
-    1. タイトル (日本語と英語)
-    2. 簡単な説明 (日本語)
-    3. クイズ問題 (5問)
-       - 各問題は日本語で説明
-       - 選択肢は4つ (英語)
-       - 正解とその説明 (日本語と英語)
+    
+    まず、ユーザーが指定したトピックと英語レベルに関連する${questionCount}個の英単語とその意味を考えてください。
+    それぞれの単語は異なる単語である必要があります。
+    
+    そして、各単語について以下の形式でクイズを作成してください:
+    
+    [
+      {
+        "question": "英単語そのもの（例："Patient"）",
+        "choices": ["選択肢1（日本語）", "選択肢2（日本語）", "選択肢3（日本語）", "選択肢4（日本語）", "選択肢5（日本語）"],
+        "correctIndex": 0～4のいずれか（正解の選択肢のインデックス）,
+        "explanation": "この単語の説明や使い方（日本語）"
+      },
+      ...残りの単語も同様の形式で...
+    ]
+    
+    重要：
+    1. 必ず${questionCount}問の異なる問題を作成してください
+    2. JSONフォーマットで出力してください
+    3. questionに英単語、choicesに日本語の単語（5つ）を含めてください
+    4. correctIndexは必ず0から4の整数値で、choicesの正解のインデックスにしてください
+    5. 選択肢は必ず5つ用意してください
   `;
 
   try {
-    return await generateAIResponse([{ role: 'user', content: prompt }], {
-      maxTokens: 1000,
-      temperature: 0.8,
-      systemPrompt: 'あなたは英語教育の専門家です。日本人学習者向けに、わかりやすく役立つ英語学習コンテンツを作成してください。'
+    const response = await generateAIResponse([{ role: 'user', content: prompt }], {
+      maxTokens: 2000,
+      temperature: 0.7,
+      systemPrompt: 'あなたは英語教育の専門家です。日本人学習者向けに、わかりやすく役立つ英語学習コンテンツを作成してください。JSONフォーマットで正確な出力を行います。'
     });
+    
+    // Extract JSON from the response
+    const jsonMatch = response.match(/\[\s*{[\s\S]*}\s*\]/);
+    if (jsonMatch) {
+      try {
+        const jsonData = JSON.parse(jsonMatch[0]);
+        // Validate the JSON structure
+        if (Array.isArray(jsonData) && jsonData.length > 0) {
+          const isValid = jsonData.every(item => 
+            typeof item.question === 'string' && 
+            Array.isArray(item.choices) && 
+            item.choices.length === 5 &&
+            typeof item.correctIndex === 'number' && 
+            item.correctIndex >= 0 && 
+            item.correctIndex <= 4 &&
+            typeof item.explanation === 'string'
+          );
+          
+          if (isValid) {
+            return JSON.stringify(jsonData);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to parse JSON from AI response:', e);
+      }
+    }
+    
+    // If we couldn't extract valid JSON, return the full response
+    return response;
   } catch (error: any) {
     console.error('Error generating quiz:', error);
     return 'クイズの生成に失敗しました。後でもう一度お試しください。';
@@ -195,4 +245,4 @@ export async function generateVocabularyPractice(topic: string, count: number = 
     console.error('Error generating vocabulary practice:', error);
     return '申し訳ありませんが、ボキャブラリーの生成中にエラーが発生しました。後でもう一度お試しください。';
   }
-} 
+}

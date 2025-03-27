@@ -22,7 +22,8 @@ export async function PUT(
     
     await connectDB();
     
-    const { id } = params;
+    // Properly await the params object
+    const id = params.id;
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json(
@@ -33,7 +34,7 @@ export async function PUT(
     
     // Get request body
     const body = await req.json();
-    const { completed, score } = body;
+    const { completed, score, results } = body;
     
     if (completed === undefined) {
       return NextResponse.json(
@@ -49,10 +50,18 @@ export async function PUT(
       );
     }
     
+    // Create update object
+    const updateData: any = { completed, score };
+    
+    // Add results if provided
+    if (results && Array.isArray(results)) {
+      updateData.results = results;
+    }
+    
     // Find and update the quiz
     const quiz = await Quiz.findOneAndUpdate(
       { _id: id, userId: session.user.id },
-      { completed, score },
+      updateData,
       { new: true }
     );
     
