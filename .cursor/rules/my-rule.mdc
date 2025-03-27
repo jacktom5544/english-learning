@@ -1,6 +1,11 @@
 ---
 description: 
 globs: 
+alwaysApply: false
+---
+---
+description: 
+globs: 
 alwaysApply: true
 ---
 
@@ -11,7 +16,7 @@ Next.js 15.2.2(latest Version) with App Router
 TypeScript with strict typing
 MongoDB for database
 Database Name is english-learning(alreday created)
-Tailwind CSS and Shadcn UI
+Tailwind CSS
 Make modern looking website
 Cloudinary for image storage
 Shadcn UI for graph/charts
