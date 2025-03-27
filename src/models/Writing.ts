@@ -6,6 +6,7 @@ export interface IWriting extends mongoose.Document {
   content: string;
   feedback: string;
   score: number;
+  preferredTeacher: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -32,6 +33,11 @@ const WritingSchema = new Schema<IWriting>(
     score: {
       type: Number,
       default: 0,
+    },
+    preferredTeacher: {
+      type: String,
+      enum: ['hiroshi', 'reiko', 'iwao', 'taro'],
+      default: 'taro',
     },
   },
   {

@@ -12,6 +12,7 @@ interface WritingEntry {
   feedback: string;
   score: number;
   createdAt: string;
+  preferredTeacher?: 'hiroshi' | 'reiko' | 'iwao' | 'taro';
 }
 
 interface UserProfile {
@@ -38,7 +39,7 @@ const teacherInfo = {
   iwao: {
     name: '巌男先生',
     image: '/iwao.png',
-    messageTemplate: 'が{name}に合ったトピックを作るからそれに合った英文を書いてこい！おい、間違ってもガッカリさせんじゃねーぞ！',
+    messageTemplate: 'がお前に合ったトピックを作るからそれに合った英文を書いてこい！おい、間違ってもガッカリさせんじゃねーぞ！',
     prefix: '俺'
   },
   taro: {
@@ -146,6 +147,9 @@ export default function WritingPage() {
       
       const entries = await response.json();
       
+      // Debug: Log entries to see what teacher info is coming from API
+      console.log('Writing entries:', entries);
+      
       setPreviousEntries(entries);
     } catch (error) {
       console.error('Failed to fetch writing history:', error);
@@ -222,6 +226,9 @@ export default function WritingPage() {
 
     try {
       // Submit the writing for feedback
+      const preferredTeacher = userProfile?.preferredTeacher || 'taro';
+      console.log('Submitting writing with teacher:', preferredTeacher);
+      
       const response = await fetch('/api/writing', {
         method: 'POST',
         headers: {
@@ -230,6 +237,7 @@ export default function WritingPage() {
         body: JSON.stringify({
           topic,
           content: userContent,
+          preferredTeacher,
         }),
       });
 
@@ -240,6 +248,8 @@ export default function WritingPage() {
       }
       
       const data = await response.json();
+      
+      console.log('Feedback response data:', data);
       
       if (!data.feedback || typeof data.score !== 'number') {
         console.error('Invalid response format:', data);
@@ -386,86 +396,6 @@ export default function WritingPage() {
             </div>
           </div>
         )}
-
-        {showHistory && previousEntries.length > 0 && (
-          <div className="mt-8">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-medium text-gray-900">過去のライティング</h2>
-              <button
-                onClick={() => setShowHistory(false)}
-                className="text-sm text-gray-500 hover:text-gray-700"
-              >
-                履歴を隠す
-              </button>
-            </div>
-            <div className="space-y-4">
-              {previousEntries
-                .slice((currentPage - 1) * entriesPerPage, currentPage * entriesPerPage)
-                .map((entry) => (
-                  <div key={entry._id} className="bg-white shadow rounded-lg p-6">
-                    <div className="flex items-start space-x-4 mb-4">
-                      <div className="flex-shrink-0 w-12 h-12 relative">
-                        <div className="absolute inset-0 rounded-full overflow-hidden">
-                          <Image
-                            src={teacherInfo[userProfile?.preferredTeacher || 'taro'].image}
-                            alt={teacherInfo[userProfile?.preferredTeacher || 'taro'].name}
-                            fill
-                            style={{ objectFit: 'cover' }}
-                          />
-                        </div>
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="font-medium text-gray-900 mb-1">
-                          {teacherInfo[userProfile?.preferredTeacher || 'taro'].name}からのフィードバック
-                        </h3>
-                        <p className="text-sm text-gray-500">
-                          {new Date(entry.createdAt).toLocaleString('ja-JP')}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <div className="border-t border-gray-200 pt-4">
-                      <h3 className="font-medium text-gray-900 mb-2">トピック</h3>
-                      <p className="text-gray-600 mb-4">{entry.topic}</p>
-                      
-                      <h3 className="font-medium text-gray-900 mb-2">あなたの回答</h3>
-                      <p className="text-gray-600 mb-4 whitespace-pre-line">{entry.content}</p>
-                      
-                      <h3 className="font-medium text-gray-900 mb-2">フィードバック</h3>
-                      <div className="prose max-w-none whitespace-pre-line text-gray-600 mb-4">
-                        {entry.feedback}
-                      </div>
-                      
-                      <div className="mt-4 pt-4 border-t border-gray-200">
-                        <p className="text-gray-700">
-                          スコア: <span className="font-medium">{entry.score}</span>/100
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-            </div>
-            {previousEntries.length > entriesPerPage && (
-              <div className="mt-4 flex justify-center">
-                <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
-                  {Array.from({ length: Math.ceil(previousEntries.length / entriesPerPage) }).map((_, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setCurrentPage(i + 1)}
-                      className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
-                        currentPage === i + 1
-                          ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
-                          : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
-                      }`}
-                    >
-                      {i + 1}
-                    </button>
-                  ))}
-                </nav>
-              </div>
-            )}
-          </div>
-        )}
       </div>
     );
   };
@@ -507,213 +437,134 @@ export default function WritingPage() {
         </div>
       )}
 
-      {!isTopicGenerated ? (
-        <div className="bg-white shadow rounded-lg p-6 mb-6">
-          {userProfile && (
-            <TeacherMessage
-              teacher={userProfile.preferredTeacher}
-              userName={userProfile.name}
-            />
-          )}
-          <button
-            onClick={generateTopic}
-            disabled={isGeneratingTopic}
-            className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            {isGeneratingTopic ? 'トピックを生成中...' : 'ライティングを始める'}
-          </button>
-          {isGeneratingTopic && (
-            <div className="mt-8 flex flex-col items-center">
-              <div className="animate-pulse flex space-x-4 mb-4">
-                <div className="h-12 w-12 bg-blue-400 rounded-full animate-bounce"></div>
-                <div className="h-12 w-12 bg-blue-500 rounded-full animate-bounce delay-100"></div>
-                <div className="h-12 w-12 bg-blue-600 rounded-full animate-bounce delay-200"></div>
-              </div>
-              <p className="text-lg font-medium text-gray-700 mt-2">AIが現在作成中です・・・</p>
-              <p className="text-sm text-gray-500 mt-1">少々お待ちください</p>
-            </div>
-          )}
-        </div>
-      ) : (
-        renderContent()
-      )}
-
-      {showHistory && previousEntries.length > 0 && (
-        <div className="bg-white shadow rounded-lg overflow-hidden mt-8">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-medium text-gray-900">過去のライティング</h2>
-          </div>
-          {(() => {
-            const filteredEntries = previousEntries.filter(entry => entry.content && entry.feedback);
-            return (
-              <>
-                <div className="divide-y divide-gray-200">
-                  {filteredEntries.length === 0 ? (
-                    <div className="px-6 py-10 text-center text-gray-500">
-                      過去のライティングがありません。ライティング練習を始めてみましょう！
-                    </div>
-                  ) : (
-                    filteredEntries
-                      .slice((currentPage - 1) * entriesPerPage, currentPage * entriesPerPage)
-                      .map((entry) => {
-                        return (
-                          <div key={entry._id} className="px-6 py-4">
-                            <div className="mb-2 flex flex-wrap items-center">
-                              <span className="text-sm text-gray-500 mr-3">
-                                {new Date(entry.createdAt).toLocaleDateString('ja-JP')}
-                              </span>
-                              <span
-                                className={`mt-1 inline-flex items-center px-3 py-1 rounded-full text-xs font-medium shadow-sm ${
-                                  entry.score >= 80
-                                    ? 'bg-gradient-to-r from-green-400 to-green-500 text-white'
-                                    : entry.score >= 60
-                                    ? 'bg-gradient-to-r from-yellow-300 to-yellow-400 text-white'
-                                    : 'bg-gradient-to-r from-red-300 to-red-400 text-white'
-                                }`}
-                              >
-                                <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path>
-                                </svg>
-                                スコア: {entry.score}
-                              </span>
-                            </div>
-                            <div className="mb-2 p-3 bg-gray-50 rounded-md text-sm">
-                              <div className="font-medium">トピック:</div>
-                              <div className="mt-1 break-words">{entry.topic}</div>
-                            </div>
-                            <div className="mb-2 p-3 bg-blue-50 rounded-md text-sm">
-                              <div className="font-medium">あなたの回答:</div>
-                              <div className="mt-1 break-words whitespace-pre-wrap">{entry.content}</div>
-                            </div>
-                            <div className="p-4 bg-gradient-to-br from-green-50 to-blue-50 rounded-lg shadow-sm border border-green-100 text-sm">
-                              <div className="font-medium">フィードバック:</div>
-                              <div className="mt-2 break-words whitespace-pre-line prose prose-sm prose-blue max-w-none text-gray-800">
-                                {entry.feedback.split('\n').map((line, index) => {
-                                  // Check if the line contains a section number (like "1.", "2.")
-                                  const sectionMatch = line.match(/^(\d+)\./);
-                                  
-                                  if (sectionMatch) {
-                                    return (
-                                      <div key={index} className="mt-3 first:mt-0">
-                                        <h4 className="text-blue-700 font-medium">{line}</h4>
-                                      </div>
-                                    );
-                                  }
-                                  
-                                  // Check if line contains emphasis (between ** or __) and style it
-                                  const styledLine = line.replace(
-                                    /(\*\*|__)(.*?)(\*\*|__)/g, 
-                                    '<span class="font-bold text-blue-800">$2</span>'
-                                  );
-                                  
-                                  return (
-                                    <div 
-                                      key={index} 
-                                      className="mb-1"
-                                      dangerouslySetInnerHTML={{ __html: styledLine }}
-                                    />
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })
-                  )}
+      {/* Writing section */}
+      <div className="mb-8">
+        {!isTopicGenerated ? (
+          <div className="bg-white shadow rounded-lg p-6 mb-6">
+            {userProfile && (
+              <TeacherMessage
+                teacher={userProfile.preferredTeacher}
+                userName={userProfile.name}
+              />
+            )}
+            <button
+              onClick={generateTopic}
+              disabled={isGeneratingTopic}
+              className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              {isGeneratingTopic ? 'トピックを生成中...' : 'ライティングを始める'}
+            </button>
+            {isGeneratingTopic && (
+              <div className="mt-8 flex flex-col items-center">
+                <div className="animate-pulse flex space-x-4 mb-4">
+                  <div className="h-12 w-12 bg-blue-400 rounded-full animate-bounce"></div>
+                  <div className="h-12 w-12 bg-blue-500 rounded-full animate-bounce delay-100"></div>
+                  <div className="h-12 w-12 bg-blue-600 rounded-full animate-bounce delay-200"></div>
                 </div>
+                <p className="text-lg font-medium text-gray-700 mt-2">AIが現在作成中です・・・</p>
+                <p className="text-sm text-gray-500 mt-1">少々お待ちください</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          renderContent()
+        )}
+      </div>
+
+      {/* History section - always available */}
+      {showHistory && previousEntries.length > 0 && (
+        <div className="mt-8">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-medium text-gray-900">過去のライティング</h2>
+            <button
+              onClick={() => setShowHistory(false)}
+              className="text-sm text-gray-500 hover:text-gray-700"
+            >
+              履歴を隠す
+            </button>
+          </div>
+          <div className="space-y-4">
+            {previousEntries
+              .slice((currentPage - 1) * entriesPerPage, currentPage * entriesPerPage)
+              .map((entry) => {
+                // Debug: Log each entry to see teacher info
+                console.log(`Entry ${entry._id} teacher:`, entry.preferredTeacher);
                 
-                {filteredEntries.length > 0 && (
-                  <div className="px-6 py-4 border-t border-gray-200">
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm text-gray-700">
-                        <span>表示: </span>
-                        <span className="font-medium">{Math.min((currentPage - 1) * entriesPerPage + 1, filteredEntries.length)}</span>
-                        <span> - </span>
-                        <span className="font-medium">{Math.min(currentPage * entriesPerPage, filteredEntries.length)}</span>
-                        <span> / </span>
-                        <span className="font-medium">{filteredEntries.length}</span>
-                        <span> 件</span>
-                      </div>
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => setCurrentPage(1)}
-                          disabled={currentPage === 1}
-                          className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-                          aria-label="最初のページへ"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M15.707 15.707a1 1 0 01-1.414 0l-5-5a1 1 0 010-1.414l5-5a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 010 1.414zm-6 0a1 1 0 01-1.414 0l-5-5a1 1 0 010-1.414l5-5a1 1 0 011.414 1.414L5.414 10l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => setCurrentPage(currentPage - 1)}
-                          disabled={currentPage === 1}
-                          className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-                        >
-                          前のページ
-                        </button>
-                        
-                        <div className="flex items-center">
-                          {Array.from({ length: Math.min(5, Math.ceil(filteredEntries.length / entriesPerPage)) }, (_, i) => {
-                            // Show current page and two pages before and after
-                            let pageToShow;
-                            const totalPages = Math.ceil(filteredEntries.length / entriesPerPage);
-                            
-                            if (totalPages <= 5) {
-                              // If total pages are 5 or less, show all
-                              pageToShow = i + 1;
-                            } else if (currentPage <= 3) {
-                              // If current page is near the beginning
-                              pageToShow = i + 1;
-                            } else if (currentPage >= totalPages - 2) {
-                              // If current page is near the end
-                              pageToShow = totalPages - 4 + i;
-                            } else {
-                              // If current page is in the middle
-                              pageToShow = currentPage - 2 + i;
-                            }
-                            
-                            return (
-                              <button
-                                key={i}
-                                onClick={() => setCurrentPage(pageToShow)}
-                                className={`inline-flex items-center justify-center w-8 h-8 mx-1 border ${
-                                  pageToShow === currentPage
-                                    ? 'border-blue-500 bg-blue-50 text-blue-600 font-medium'
-                                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-                                } rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500`}
-                              >
-                                {pageToShow}
-                              </button>
-                            );
-                          })}
+                // Use a variable to hold the teacher key with fallback
+                const teacherKey = entry.preferredTeacher || 'taro';
+                console.log('Using teacher key:', teacherKey, 'for entry', entry._id);
+                
+                // Make sure teacher exists in teacherInfo
+                if (!teacherInfo[teacherKey]) {
+                  console.warn(`Teacher ${teacherKey} not found, falling back to taro`);
+                }
+                
+                const teacher = teacherInfo[teacherKey] ? teacherKey : 'taro';
+                
+                return (
+                  <div key={entry._id} className="bg-white shadow rounded-lg p-6">
+                    <div className="flex items-start space-x-4 mb-4">
+                      <div className="flex-shrink-0 w-12 h-12 relative">
+                        <div className="absolute inset-0 rounded-full overflow-hidden">
+                          <Image
+                            src={teacherInfo[teacher].image}
+                            alt={teacherInfo[teacher].name}
+                            fill
+                            style={{ objectFit: 'cover' }}
+                          />
                         </div>
-                        
-                        <button
-                          onClick={() => setCurrentPage(currentPage + 1)}
-                          disabled={currentPage === Math.ceil(filteredEntries.length / entriesPerPage)}
-                          className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-                        >
-                          次のページ
-                        </button>
-                        <button
-                          onClick={() => setCurrentPage(Math.ceil(filteredEntries.length / entriesPerPage))}
-                          disabled={currentPage === Math.ceil(filteredEntries.length / entriesPerPage)}
-                          className="inline-flex items-center justify-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-                          aria-label="最後のページへ"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M10.293 15.707a1 1 0 010-1.414L14.586 10l-4.293-4.293a1 1 0 111.414-1.414l5 5a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                            <path fillRule="evenodd" d="M4.293 15.707a1 1 0 010-1.414L8.586 10 4.293 5.707a1 1 0 011.414-1.414l5 5a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                          </svg>
-                        </button>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-medium text-gray-900 mb-1">
+                          {teacherInfo[teacher].name}からのフィードバック
+                        </h3>
+                        <p className="text-sm text-gray-500">
+                          {new Date(entry.createdAt).toLocaleString('ja-JP')}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="border-t border-gray-200 pt-4">
+                      <h3 className="font-medium text-gray-900 mb-2">トピック</h3>
+                      <p className="text-gray-600 mb-4">{entry.topic}</p>
+                      
+                      <h3 className="font-medium text-gray-900 mb-2">あなたの回答</h3>
+                      <p className="text-gray-600 mb-4 whitespace-pre-line">{entry.content}</p>
+                      
+                      <h3 className="font-medium text-gray-900 mb-2">フィードバック</h3>
+                      <div className="prose max-w-none whitespace-pre-line text-gray-600 mb-4">
+                        {entry.feedback}
+                      </div>
+                      
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                        <p className="text-gray-700">
+                          スコア: <span className="font-medium">{entry.score}</span>/100
+                        </p>
                       </div>
                     </div>
                   </div>
-                )}
-              </>
-            );
-          })()}
+                );
+              })}
+          </div>
+          {previousEntries.length > entriesPerPage && (
+            <div className="mt-4 flex justify-center">
+              <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
+                {Array.from({ length: Math.ceil(previousEntries.length / entriesPerPage) }).map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setCurrentPage(i + 1)}
+                    className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                      currentPage === i + 1
+                        ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                        : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
+              </nav>
+            </div>
+          )}
         </div>
       )}
     </div>

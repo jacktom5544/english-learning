@@ -191,7 +191,13 @@ export async function GET(req: NextRequest) {
       await connectDB();
       const writings = await Writing.find({ userId: session.user.id })
         .sort({ createdAt: -1 })
+        .select('_id topic content feedback score preferredTeacher createdAt')
         .limit(20);
+      
+      console.log('Retrieved writings with teachers:', writings.map(w => ({
+        id: w._id,
+        teacher: w.preferredTeacher || 'taro'
+      })));
       
       return NextResponse.json(writings);
     }
@@ -216,7 +222,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { topic, content } = await req.json();
+    const { topic, content, preferredTeacher } = await req.json();
     
     if (!topic || !content) {
       return NextResponse.json(
@@ -236,12 +242,16 @@ export async function POST(req: NextRequest) {
       );
     }
     
+    // Get the teacher from request or from user profile
+    const teacherToUse = preferredTeacher || user.preferredTeacher || 'taro';
+    console.log('Using teacher for feedback:', teacherToUse);
+    
     // Generate feedback using the appropriate teacher character
     const { feedback: feedbackText, score } = await generateFeedback(
       user.englishLevel || 'intermediate', 
       topic, 
       content,
-      user.preferredTeacher || 'taro'
+      teacherToUse
     );
     
     // Create a new writing entry
@@ -250,7 +260,8 @@ export async function POST(req: NextRequest) {
       topic,
       content,
       feedback: feedbackText,
-      score
+      score,
+      preferredTeacher: teacherToUse
     });
     
     await writingEntry.save();
@@ -258,7 +269,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       _id: writingEntry._id,
       feedback: feedbackText,
-      score
+      score,
+      preferredTeacher: teacherToUse
     });
   } catch (error) {
     console.error('Error in writing POST route:', error);
