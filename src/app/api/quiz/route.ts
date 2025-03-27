@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import User from '@/models/User';
 import Quiz from '@/models/Quiz';
+import Vocabulary from '@/models/Vocabulary';
 import connectDB from '@/lib/db';
 import { generateEnglishQuiz } from '@/lib/ai';
 
@@ -12,7 +13,8 @@ export async function POST(req: NextRequest) {
     console.log('POST /api/quiz: Generating quiz');
     const session = await getServerSession(authOptions);
     
-    console.log('POST /api/quiz: Session data:', session);
+    // Sanitize session log - don't log user details
+    console.log('POST /api/quiz: Session authenticated:', !!session?.user?.id);
     
     if (!session?.user?.id) {
       console.log('POST /api/quiz: No session user ID');
@@ -50,6 +52,12 @@ export async function POST(req: NextRequest) {
       
       console.log(`Generating quiz for level: ${level}, job: ${job}, count: ${count}`);
       
+      // Get previously seen vocabulary words for this user to avoid repetition
+      const previousVocabularies = await Vocabulary.find({ userId: session.user.id }, 'word').lean();
+      const previousWords = previousVocabularies.map(v => v.word.toLowerCase());
+      
+      console.log(`Found ${previousWords.length} previous vocabulary words for this user`);
+      
       // Generate topic based on job and goal
       let topic = "一般的な英語";
       if (job) {
@@ -59,8 +67,8 @@ export async function POST(req: NextRequest) {
         topic += `（目標: ${goal}）`;
       }
       
-      // Generate quiz using DeepSeek AI
-      const quizContent = await generateEnglishQuiz(topic, level, count) || '';
+      // Generate quiz using DeepSeek AI, including the list of words to exclude
+      const quizContent = await generateEnglishQuiz(topic, level, count, previousWords) || '';
       
       console.log('Quiz content generated successfully');
       
@@ -95,8 +103,30 @@ export async function POST(req: NextRequest) {
           throw new Error('Quiz content is not an array');
         }
         
-        // Limit to requested count
-        questions = questions.slice(0, count);
+        // Filter out any questions using previously seen words
+        const uniqueQuestions = questions.filter(q => 
+          !previousWords.includes(q.question.toLowerCase())
+        );
+        
+        console.log(`Filtered out ${questions.length - uniqueQuestions.length} previously seen words`);
+        
+        // If we have enough unique questions, use those
+        if (uniqueQuestions.length >= count) {
+          questions = uniqueQuestions.slice(0, count);
+          console.log(`Using ${questions.length} unique questions`);
+        } else {
+          // If we don't have enough unique questions, use as many as we can
+          // and supplement with some of the duplicates if needed
+          console.log(`Not enough unique questions (${uniqueQuestions.length}), adding some previously seen words to reach ${count}`);
+          
+          const neededAdditional = count - uniqueQuestions.length;
+          questions = [
+            ...uniqueQuestions,
+            ...questions
+              .filter(q => !uniqueQuestions.includes(q))
+              .slice(0, neededAdditional)
+          ];
+        }
         
         // Make sure we have enough questions by duplicating if necessary
         if (questions.length < count) {
@@ -174,11 +204,19 @@ export async function POST(req: NextRequest) {
           }
         ];
         
+        // Filter default questions against previous words
+        const filteredDefault = defaultQuestions.filter(q => 
+          !previousWords.includes(q.question.toLowerCase())
+        );
+        
+        const uniqueDefaults = filteredDefault.length > 0 ? filteredDefault : defaultQuestions;
+        
         // Create enough questions to match the requested count using the defaults in rotation
         for (let i = 0; i < Math.min(count, 20); i++) {
+          const baseQuestion = uniqueDefaults[i % uniqueDefaults.length];
           questions.push({
-            ...defaultQuestions[i % defaultQuestions.length],
-            question: `${defaultQuestions[i % defaultQuestions.length].question} ${i + 1}`
+            ...baseQuestion,
+            question: `${baseQuestion.question}${i > 0 ? ` ${i + 1}` : ''}` // Add number suffix to make unique
           });
         }
       }

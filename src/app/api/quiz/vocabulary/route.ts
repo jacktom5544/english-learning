@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import Vocabulary from '@/models/Vocabulary';
 import connectDB from '@/lib/db';
 import mongoose from 'mongoose';
+import { safeLog, safeError } from '@/lib/utils';
 
 // Add a vocabulary from the quiz
 export async function POST(req: NextRequest) {
@@ -11,6 +12,7 @@ export async function POST(req: NextRequest) {
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.id) {
+      safeLog('Vocabulary API: Unauthorized access attempt');
       return NextResponse.json(
         { error: 'ログインが必要です' },
         { status: 401 }
@@ -23,6 +25,7 @@ export async function POST(req: NextRequest) {
     const { word, translation, explanation, isRemembered } = body;
     
     if (!word || !translation) {
+      safeLog('Vocabulary API: Missing required fields', { word: !!word, translation: !!translation });
       return NextResponse.json(
         { error: '単語と翻訳は必須です' },
         { status: 400 }
@@ -37,12 +40,23 @@ export async function POST(req: NextRequest) {
     
     if (existingVocabulary) {
       // Update the existing vocabulary's remembered status
+      safeLog('Vocabulary API: Updating existing vocabulary', { 
+        vocabularyId: existingVocabulary._id.toString(),
+        word,
+        isRemembered 
+      });
+      
       existingVocabulary.isRemembered = isRemembered;
       await existingVocabulary.save();
       return NextResponse.json(existingVocabulary);
     }
     
     // Create a new vocabulary
+    safeLog('Vocabulary API: Creating new vocabulary', {
+      word,
+      isRemembered: isRemembered || false
+    });
+    
     const newVocabulary = await Vocabulary.create({
       userId: session.user.id,
       word,
@@ -53,7 +67,7 @@ export async function POST(req: NextRequest) {
     
     return NextResponse.json(newVocabulary);
   } catch (error) {
-    console.error('Error adding vocabulary from quiz:', error);
+    safeError('Error adding vocabulary from quiz:', error);
     return NextResponse.json(
       { error: '単語の追加に失敗しました' },
       { status: 500 }

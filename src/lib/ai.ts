@@ -78,23 +78,35 @@ export async function generateAIResponse(
  * @param topic - Quiz topic
  * @param level - Difficulty level (beginner, intermediate, advanced)
  * @param count - Number of quiz questions to generate (default 10, max 20)
+ * @param excludeWords - Array of words to exclude from the generated quiz
  * @returns The generated quiz
  */
-export async function generateEnglishQuiz(topic: string, level: string, count: number = 10) {
+export async function generateEnglishQuiz(
+  topic: string, 
+  level: string, 
+  count: number = 10, 
+  excludeWords: string[] = []
+) {
   // Ensure count is within reasonable limits
   const questionCount = Math.min(Math.max(count, 1), 20);
+  
+  // Format the exclude words for the prompt
+  const excludeWordsText = excludeWords.length > 0
+    ? `\n除外する単語リスト: ${excludeWords.slice(0, 100).join(', ')}${excludeWords.length > 100 ? '...(その他)' : ''}`
+    : '';
   
   const prompt = `
     制作条件: 
     - トピック: ${topic}
     - レベル: ${level}
     - 問題数: ${questionCount}問（全て異なる英単語を使用すること）
-    - 言語: 日本語と英語を併記
+    - 言語: 日本語と英語を併記${excludeWordsText}
     
     以下の形式で英語クイズを作成してください:
     
     まず、ユーザーが指定したトピックと英語レベルに関連する${questionCount}個の英単語とその意味を考えてください。
     それぞれの単語は異なる単語である必要があります。
+    ${excludeWords.length > 0 ? '上記の「除外する単語リスト」に含まれる単語は使用しないでください。' : ''}
     
     そして、各単語について以下の形式でクイズを作成してください:
     
@@ -114,6 +126,7 @@ export async function generateEnglishQuiz(topic: string, level: string, count: n
     3. questionに英単語、choicesに日本語の単語（5つ）を含めてください
     4. correctIndexは必ず0から4の整数値で、choicesの正解のインデックスにしてください
     5. 選択肢は必ず5つ用意してください
+    6. 除外リストにある単語は使用しないでください
   `;
 
   try {
