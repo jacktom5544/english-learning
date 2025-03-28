@@ -348,19 +348,19 @@ export default function QuizPage() {
                         <>
                           <button
                             onClick={() => markVocabulary(index, true)}
-                            className="px-3 py-1 bg-green-600 text-white text-xs rounded-md hover:bg-green-700"
+                            className="px-3 py-2 bg-green-600 text-white text-xs rounded-md hover:bg-green-700 cursor-pointer"
                           >
                             覚えた
                           </button>
                           <button
                             onClick={() => markVocabulary(index, false)}
-                            className="px-3 py-1 bg-amber-600 text-white text-xs rounded-md hover:bg-amber-700"
+                            className="px-3 py-2 bg-amber-600 text-white text-xs rounded-md hover:bg-amber-700 cursor-pointer"
                           >
                             すぐに忘れそう
                           </button>
                         </>
                       ) : (
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        <span className={`inline-flex items-center px-3 py-2 rounded-full text-xs font-medium ${
                           markedVocabularies[index] 
                             ? 'bg-green-100 text-green-800' 
                             : 'bg-amber-100 text-amber-800'
