@@ -194,11 +194,6 @@ export async function GET(req: NextRequest) {
         .select('_id topic content feedback score preferredTeacher createdAt')
         .limit(20);
       
-      console.log('Retrieved writings with teachers:', writings.map(w => ({
-        id: w._id,
-        teacher: w.preferredTeacher || 'taro'
-      })));
-      
       return NextResponse.json(writings);
     }
   } catch (error) {

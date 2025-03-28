@@ -78,13 +78,14 @@ export default function QuizPage() {
   };
 
   const generateQuiz = async () => {
+    console.log('generateQuiz called - starting quiz generation');
     setIsGenerating(true);
     setMessage('');
     setQuizResults([]);
     setMarkedVocabularies({});
 
     try {
-      console.log('Generating quiz...');
+      console.log('Sending quiz generation request...');
       const response = await fetch('/api/quiz', {
         method: 'POST',
         headers: {
@@ -94,12 +95,14 @@ export default function QuizPage() {
           englishLevel: userProfile?.englishLevel,
           job: userProfile?.job,
           goal: userProfile?.goal,
-          count: 20, // Request 20 quiz questions
+          count: 10, // Request 10 quiz questions
         }),
       });
 
+      console.log('Quiz API response status:', response.status);
+      
       if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
         console.error('Quiz generation failed:', errorData);
         throw new Error(errorData?.error || 'クイズの生成に失敗しました');
       }
@@ -110,6 +113,7 @@ export default function QuizPage() {
       // Extract quiz ID from the response
       if (quizData._id) {
         setQuizId(quizData._id);
+        console.log('Quiz ID set:', quizData._id);
       }
       
       // Extract questions from the response
@@ -127,12 +131,14 @@ export default function QuizPage() {
         throw new Error('クイズの問題が含まれていません');
       }
       
+      console.log('Setting questions state with', quizQuestions.length, 'questions');
       setQuestions(quizQuestions);
       setCurrentQuestionIndex(0);
       setSelectedAnswer(null);
       setIsAnswered(false);
       setQuizCompleted(false);
       setScore(0);
+      console.log('Quiz generation complete - state updated');
     } catch (error: any) {
       console.error('Failed to generate quiz:', error);
       setMessage(`クイズの生成に失敗しました。${error.message || 'しばらくしてからもう一度お試しください。'}`);
@@ -251,10 +257,23 @@ export default function QuizPage() {
   };
 
   const startNewQuiz = () => {
+    console.log('Starting new quiz...');
+    // Reset all quiz-related state completely
     setQuizResults([]);
     setMarkedVocabularies({});
     setQuizCompleted(false);
-    generateQuiz();
+    setCurrentQuestionIndex(0);
+    setSelectedAnswer(null);
+    setIsAnswered(false);
+    setScore(0);
+    setQuestions([]);
+    setQuizId(null);
+    setMessage('');
+    
+    // Call generateQuiz after a short delay to ensure state is reset
+    setTimeout(() => {
+      generateQuiz();
+    }, 100);
   };
 
   const renderQuizContent = () => {
@@ -266,7 +285,7 @@ export default function QuizPage() {
             disabled={isGenerating}
             className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
           >
-            {isGenerating ? 'クイズを生成中...' : 'クイズを始める (20問)'}
+            {isGenerating ? 'クイズを生成中...' : 'クイズを始める (10問)'}
           </button>
           {isGenerating && (
             <div className="mt-8 flex flex-col items-center">
@@ -353,7 +372,10 @@ export default function QuizPage() {
           
           <div className="flex justify-center">
             <button
-              onClick={startNewQuiz}
+              onClick={() => {
+                console.log('New quiz button clicked');
+                startNewQuiz();
+              }}
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
             >
               新しいクイズを始める
@@ -424,7 +446,7 @@ export default function QuizPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">英単語クイズ</h1>
       <p className="text-gray-600">
-        あなたの英語レベル、職業、目標に合わせた英単語クイズを生成します。20問のクイズに答えた後、結果を確認できます。
+        あなたの英語レベル、職業、目標に合わせた英単語クイズを生成します。10問のクイズに答えた後、結果を確認できます。
       </p>
       {message && (
         <div className="bg-amber-50 border border-amber-400 text-amber-700 px-4 py-3 rounded">

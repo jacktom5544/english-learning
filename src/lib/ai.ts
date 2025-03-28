@@ -88,7 +88,7 @@ export async function generateEnglishQuiz(
   excludeWords: string[] = []
 ) {
   // Ensure count is within reasonable limits
-  const questionCount = Math.min(Math.max(count, 1), 20);
+  const questionCount = Math.min(Math.max(count, 1), 10);
   
   // Format the exclude words for the prompt
   const excludeWordsText = excludeWords.length > 0
