@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
@@ -22,6 +22,47 @@ export default function ConversationPage() {
   const [activeConversation, setActiveConversation] = useState<IConversation | null>(null);
   const [isNewConversation, setIsNewConversation] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Use a ref to track active conversation to avoid dependency cycle
+  const activeConversationRef = useRef<IConversation | null>(null);
+  
+  // Update ref when activeConversation changes
+  useEffect(() => {
+    activeConversationRef.current = activeConversation;
+  }, [activeConversation]);
+
+  // Use callback to avoid recreation of function on each render
+  const fetchConversations = useCallback(async (silent = false) => {
+    try {
+      if (!silent) {
+        setIsLoading(true);
+      }
+      
+      const response = await fetch('/api/conversations');
+      if (response.ok) {
+        const data = await response.json();
+        
+        setConversations(data);
+        
+        // If active conversation exists, update it with fresh data
+        if (activeConversationRef.current) {
+          const updatedActiveConversation = data.find(
+            (conv: IConversation) => conv._id?.toString() === activeConversationRef.current?._id?.toString()
+          );
+          
+          if (updatedActiveConversation) {
+            setActiveConversation(updatedActiveConversation);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch conversations:', error);
+    } finally {
+      if (!silent) {
+        setIsLoading(false);
+      }
+    }
+  }, []); // No dependencies to avoid circular updates
 
   useEffect(() => {
     // Redirect if not authenticated
@@ -34,22 +75,7 @@ export default function ConversationPage() {
     if (status === 'authenticated') {
       fetchConversations();
     }
-  }, [status, router]);
-
-  const fetchConversations = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch('/api/conversations');
-      if (response.ok) {
-        const data = await response.json();
-        setConversations(data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch conversations:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  }, [status, router, fetchConversations]);
 
   const handleSelectConversation = (conversation: IConversation) => {
     setActiveConversation(conversation);
@@ -81,6 +107,11 @@ export default function ConversationPage() {
       console.error('Failed to create conversation:', error);
     }
   };
+  
+  // Handle silent conversation updates - this won't trigger a rerender of the ChatInterface
+  const handleConversationUpdate = useCallback(() => {
+    fetchConversations(true);
+  }, [fetchConversations]);
 
   if (status === 'loading' || isLoading) {
     return (
@@ -116,9 +147,13 @@ export default function ConversationPage() {
         {isNewConversation ? (
           /* @ts-ignore */
           <TeacherSelection onSelectTeacher={handleTeacherSelect} />
-        ) : activeConversation ? (
+        ) : activeConversation && activeConversation._id ? (
           /* @ts-ignore */
-          <ChatInterface conversation={activeConversation} onConversationUpdate={fetchConversations} />
+          <ChatInterface 
+            key={activeConversation._id.toString()} 
+            conversation={activeConversation} 
+            onConversationUpdate={handleConversationUpdate} 
+          />
         ) : (
           <div className="flex flex-col items-center justify-center h-full">
             <h2 className="text-xl font-semibold mb-4">Start a new conversation</h2>

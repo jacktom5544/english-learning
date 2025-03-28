@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { IConversation } from '@/models/Conversation';
 import { format } from 'date-fns';
 import { TEACHER_PROFILES } from '@/lib/teachers';
+import TypingIndicator from './TypingIndicator';
 
 interface ChatInterfaceProps {
   conversation: IConversation;
@@ -24,68 +25,102 @@ export default function ChatInterface({ conversation, onConversationUpdate }: Ch
   const [newMessage, setNewMessage] = useState('');
   const [isGrammarCorrectionEnabled, setIsGrammarCorrectionEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isTeacherTyping, setIsTeacherTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const conversationRef = useRef(conversation);
+  const onUpdateRef = useRef(onConversationUpdate);
   const teacherProfile = TEACHER_PROFILES[conversation.teacher];
-
+  
+  // Keep refs updated with latest props
   useEffect(() => {
-    if (conversation && conversation.messages) {
+    conversationRef.current = conversation;
+  }, [conversation]);
+  
+  useEffect(() => {
+    onUpdateRef.current = onConversationUpdate;
+  }, [onConversationUpdate]);
+
+  // Initial load of messages
+  useEffect(() => {
+    if (conversation?.messages) {
       setMessages(conversation.messages);
     }
-  }, [conversation]);
+  }, [conversation?._id]); // Only reload messages when conversation ID changes
 
+  // Scroll to bottom when messages change
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, isTeacherTyping]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
+  // Memoize handleSendMessage to prevent recreations
+  const handleSendMessage = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || isLoading) return;
 
+    const userMessageContent = newMessage.trim();
     setIsLoading(true);
     
     try {
       const userMessage = {
         sender: 'user' as const,
-        content: newMessage,
+        content: userMessageContent,
         timestamp: new Date(),
       };
       
       // Add user message to UI immediately
       setMessages((prev) => [...prev, userMessage]);
       setNewMessage('');
+      
+      // Show typing indicator after a short delay
+      setTimeout(() => {
+        setIsTeacherTyping(true);
+      }, 500);
 
       // Send message to API
-      const response = await fetch(`/api/conversations/${conversation._id}/messages`, {
+      const response = await fetch(`/api/conversations/${conversationRef.current._id}/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          content: newMessage,
+          content: userMessageContent,
           grammarCorrection: isGrammarCorrectionEnabled,
         }),
       });
 
       if (response.ok) {
         const data = await response.json();
-        // Update with teacher's response
-        setMessages(data.messages);
-        onConversationUpdate();
+        // Hide typing indicator before showing the response
+        setIsTeacherTyping(false);
+        
+        // Slight delay before showing teacher's response for more natural flow
+        setTimeout(() => {
+          // Update local messages state instead of refreshing the entire conversation
+          setMessages(data.messages);
+          
+          // Update the parent component silently in the background
+          // This ensures the conversation list is up-to-date but doesn't refresh the interface
+          setTimeout(() => {
+            onUpdateRef.current();
+          }, 1000);
+        }, 300);
       } else {
+        setIsTeacherTyping(false);
         console.error('Failed to send message');
       }
     } catch (error) {
+      setIsTeacherTyping(false);
       console.error('Error sending message:', error);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [newMessage, isLoading, isGrammarCorrectionEnabled]);
 
-  const renderTeacherInfo = () => {
+  const renderTeacherInfo = useCallback(() => {
     return (
       <div className="flex items-center p-4 border-b">
         <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-lg">
@@ -99,7 +134,7 @@ export default function ChatInterface({ conversation, onConversationUpdate }: Ch
         </div>
       </div>
     );
-  };
+  }, [teacherProfile]);
 
   return (
     <div className="flex flex-col h-full rounded-lg border bg-white overflow-hidden">
@@ -145,6 +180,11 @@ export default function ChatInterface({ conversation, onConversationUpdate }: Ch
             )}
           </div>
         ))}
+        
+        {isTeacherTyping && (
+          <TypingIndicator teacher={conversation.teacher} />
+        )}
+        
         <div ref={messagesEndRef} />
       </div>
 
