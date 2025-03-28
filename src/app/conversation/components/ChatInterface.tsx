@@ -6,6 +6,7 @@ import { IConversation } from '@/models/Conversation';
 import { format } from 'date-fns';
 import { TEACHER_PROFILES } from '@/lib/teachers';
 import TypingIndicator from './TypingIndicator';
+import Image from 'next/image';
 
 interface ChatInterfaceProps {
   conversation: IConversation;
@@ -123,8 +124,13 @@ export default function ChatInterface({ conversation, onConversationUpdate }: Ch
   const renderTeacherInfo = useCallback(() => {
     return (
       <div className="flex items-center p-4 border-b">
-        <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-lg">
-          {teacherProfile.name[0]}
+        <div className="w-12 h-12 relative rounded-full overflow-hidden">
+          <Image
+            src={`/images/teachers/${conversation.teacher}.png`}
+            alt={teacherProfile.name}
+            fill
+            className="object-cover"
+          />
         </div>
         <div className="ml-3">
           <h3 className="font-medium">{teacherProfile.name}</h3>
@@ -134,7 +140,7 @@ export default function ChatInterface({ conversation, onConversationUpdate }: Ch
         </div>
       </div>
     );
-  }, [teacherProfile]);
+  }, [teacherProfile, conversation.teacher]);
 
   return (
     <div className="flex flex-col h-full rounded-lg border bg-white overflow-hidden">
@@ -147,8 +153,13 @@ export default function ChatInterface({ conversation, onConversationUpdate }: Ch
             className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             {message.sender === 'teacher' && (
-              <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 mr-2">
-                {teacherProfile.name[0]}
+              <div className="h-8 w-8 relative rounded-full overflow-hidden mr-2">
+                <Image
+                  src={`/images/teachers/${conversation.teacher}.png`}
+                  alt={teacherProfile.name}
+                  fill
+                  className="object-cover"
+                />
               </div>
             )}
             <div

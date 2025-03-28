@@ -1,6 +1,7 @@
 'use client';
 
 import { TEACHER_PROFILES } from '@/lib/teachers';
+import Image from 'next/image';
 
 interface TypingIndicatorProps {
   teacher: string;
@@ -11,8 +12,13 @@ export default function TypingIndicator({ teacher }: TypingIndicatorProps) {
   
   return (
     <div className="flex justify-start mb-4">
-      <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 mr-2">
-        {teacherProfile.name[0]}
+      <div className="h-8 w-8 relative rounded-full overflow-hidden mr-2">
+        <Image
+          src={`/images/teachers/${teacher}.png`}
+          alt={teacherProfile.name}
+          fill
+          className="object-cover"
+        />
       </div>
       <div className="bg-gray-100 text-gray-800 rounded-lg p-3 flex items-center">
         <div className="flex space-x-1">

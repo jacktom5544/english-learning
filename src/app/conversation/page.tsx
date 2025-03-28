@@ -102,9 +102,13 @@ export default function ConversationPage() {
         setConversations([newConversation, ...conversations]);
         setActiveConversation(newConversation);
         setIsNewConversation(false);
+        return newConversation;
+      } else {
+        throw new Error('Failed to create conversation');
       }
     } catch (error) {
       console.error('Failed to create conversation:', error);
+      throw error; // Re-throw so the TeacherSelection component can catch it
     }
   };
   
