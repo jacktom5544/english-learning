@@ -5,6 +5,7 @@ export interface IQuizQuestion {
   choices: string[];
   correctIndex: number;
   explanation: string;
+  exampleSentence: string;
 }
 
 export interface IQuizResult {
@@ -12,6 +13,7 @@ export interface IQuizResult {
   choices: string[];
   correctIndex: number;
   explanation: string;
+  exampleSentence: string;
   userAnswer: number | null;
   isCorrect: boolean;
 }
@@ -51,6 +53,10 @@ const QuizSchema = new Schema<IQuiz>(
           type: String,
           required: true,
         },
+        exampleSentence: {
+          type: String,
+          required: false,
+        },
       },
     ],
     results: [
@@ -70,6 +76,10 @@ const QuizSchema = new Schema<IQuiz>(
         explanation: {
           type: String,
           required: true,
+        },
+        exampleSentence: {
+          type: String,
+          required: false,
         },
         userAnswer: {
           type: Number,

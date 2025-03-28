@@ -9,6 +9,7 @@ interface QuizQuestion {
   choices: string[];
   correctIndex: number;
   explanation: string;
+  exampleSentence: string;
 }
 
 interface QuizResult {
@@ -16,6 +17,7 @@ interface QuizResult {
   choices: string[];
   correctIndex: number;
   explanation: string;
+  exampleSentence: string;
   userAnswer: number | null;
   isCorrect: boolean;
 }
@@ -337,6 +339,9 @@ export default function QuizPage() {
                         </p>
                       )}
                       <p className="text-gray-600 text-sm mt-2">{result.explanation}</p>
+                      {result.exampleSentence && (
+                        <p className="text-gray-600 text-sm mt-2 italic">例文: {result.exampleSentence}</p>
+                      )}
                     </div>
                     <div className="ml-4 flex space-x-2">
                       {markedVocabularies[index] === undefined ? (
@@ -420,6 +425,12 @@ export default function QuizPage() {
           <div className="mb-6 p-4 bg-gray-50 rounded-md">
             <p className="font-medium">解説:</p>
             <p>{currentQuestion.explanation}</p>
+            {currentQuestion.exampleSentence && (
+              <div className="mt-3 pt-3 border-t border-gray-200">
+                <p className="font-medium">例文:</p>
+                <p className="italic">{currentQuestion.exampleSentence}</p>
+              </div>
+            )}
           </div>
         )}
 

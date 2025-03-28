@@ -176,31 +176,36 @@ export async function POST(req: NextRequest) {
             question: "Patient",
             choices: ["書類", "患者", "手術", "看護師", "医療"],
             correctIndex: 1,
-            explanation: "患者さんは\"Patient\"と呼びます。病院でとてもよく使う単語です。"
+            explanation: "患者さんは\"Patient\"と呼びます。病院でとてもよく使う単語です。",
+            exampleSentence: "The patient needs to rest after the surgery."
           },
           {
             question: "Example",
             choices: ["例", "サンプル", "模範", "見本", "試し"],
             correctIndex: 0,
-            explanation: "「Example」は「例」という意味です。"
+            explanation: "「Example」は「例」という意味です。",
+            exampleSentence: "Can you give me an example of how to use this word?"
           },
           {
             question: "Implement",
             choices: ["実装する", "輸入する", "改善する", "増加する", "統合する"],
             correctIndex: 0,
-            explanation: "「Implement」は「実装する」「実行する」という意味です。"
+            explanation: "「Implement」は「実装する」「実行する」という意味です。",
+            exampleSentence: "We need to implement this new feature by next week."
           },
           {
             question: "Efficient",
             choices: ["効率的な", "効果的な", "十分な", "豊富な", "拡張可能な"],
             correctIndex: 0,
-            explanation: "「Efficient」は「効率的な」という意味です。"
+            explanation: "「Efficient」は「効率的な」という意味です。",
+            exampleSentence: "This is a more efficient way to solve the problem."
           },
           {
             question: "Collaborate",
             choices: ["協力する", "競争する", "交渉する", "計画する", "比較する"],
             correctIndex: 0,
-            explanation: "「Collaborate」は「協力する」「共同作業する」という意味です。"
+            explanation: "「Collaborate」は「協力する」「共同作業する」という意味です。",
+            exampleSentence: "We need to collaborate with the marketing team on this project."
           }
         ];
         

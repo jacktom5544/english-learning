@@ -115,7 +115,8 @@ export async function generateEnglishQuiz(
         "question": "英単語そのもの（例："Patient"）",
         "choices": ["選択肢1（日本語）", "選択肢2（日本語）", "選択肢3（日本語）", "選択肢4（日本語）", "選択肢5（日本語）"],
         "correctIndex": 0～4のいずれか（正解の選択肢のインデックス）,
-        "explanation": "この単語の説明や使い方（日本語）"
+        "explanation": "この単語の説明や使い方（日本語）",
+        "exampleSentence": "この単語を使った英語の例文"
       },
       ...残りの単語も同様の形式で...
     ]
@@ -127,6 +128,7 @@ export async function generateEnglishQuiz(
     4. correctIndexは必ず0から4の整数値で、choicesの正解のインデックスにしてください
     5. 選択肢は必ず5つ用意してください
     6. 除外リストにある単語は使用しないでください
+    7. exampleSentenceフィールドには、その英単語を実際に使った英語の例文を含めてください。例文は簡潔でわかりやすく、日常的に使える文章にしてください。
   `;
 
   try {
@@ -150,7 +152,8 @@ export async function generateEnglishQuiz(
             typeof item.correctIndex === 'number' && 
             item.correctIndex >= 0 && 
             item.correctIndex <= 4 &&
-            typeof item.explanation === 'string'
+            typeof item.explanation === 'string' &&
+            typeof item.exampleSentence === 'string'
           );
           
           if (isValid) {
