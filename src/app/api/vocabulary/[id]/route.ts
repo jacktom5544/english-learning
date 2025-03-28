@@ -22,7 +22,7 @@ export async function PUT(
     
     await connectDB();
     
-    const { id } = params;
+    const id = await params.id;
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json(
@@ -76,7 +76,7 @@ export async function DELETE(
     
     await connectDB();
     
-    const { id } = params;
+    const id = await params.id;
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json(

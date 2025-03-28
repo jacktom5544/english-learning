@@ -4,6 +4,7 @@ export interface IVocabulary extends mongoose.Document {
   word: string;
   translation: string;
   explanation: string;
+  exampleSentence?: string;
   userId: mongoose.Types.ObjectId;
   isRemembered: boolean;
   createdAt: Date;
@@ -25,6 +26,11 @@ const VocabularySchema = new Schema<IVocabulary>(
     explanation: {
       type: String,
       required: [true, '説明を入力してください'],
+      trim: true,
+    },
+    exampleSentence: {
+      type: String,
+      required: false,
       trim: true,
     },
     userId: {

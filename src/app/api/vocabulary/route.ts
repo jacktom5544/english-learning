@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import Vocabulary from '@/models/Vocabulary';
 import connectDB from '@/lib/db';
 import mongoose from 'mongoose';
+import { generateAIResponse } from '@/lib/ai';
 
 // Get all vocabularies for the user
 export async function GET(req: NextRequest) {
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest) {
     await connectDB();
     
     const body = await req.json();
-    const { word, translation, explanation, isRemembered } = body;
+    const { word, translation, explanation, exampleSentence, isRemembered } = body;
     
     if (!word || !translation) {
       return NextResponse.json(
@@ -77,10 +78,35 @@ export async function POST(req: NextRequest) {
       // Update the existing vocabulary
       existingVocabulary.translation = translation;
       existingVocabulary.explanation = explanation || existingVocabulary.explanation;
+      existingVocabulary.exampleSentence = exampleSentence || existingVocabulary.exampleSentence;
       existingVocabulary.isRemembered = isRemembered !== undefined ? isRemembered : existingVocabulary.isRemembered;
       
       await existingVocabulary.save();
       return NextResponse.json(existingVocabulary);
+    }
+    
+    // Generate an example sentence if one wasn't provided
+    let finalExampleSentence = exampleSentence || '';
+    
+    if (!finalExampleSentence) {
+      try {
+        // Generate an example sentence using the AI
+        const prompt = `
+          Create a simple, everyday example sentence in English using the word "${word}".
+          The sentence should be appropriate for English learners and demonstrate how to use the word correctly.
+          Reply with only the example sentence, nothing else.
+        `;
+        
+        const generatedSentence = await generateAIResponse([{ role: 'user', content: prompt }], {
+          maxTokens: 100,
+          temperature: 0.7,
+        });
+        
+        finalExampleSentence = generatedSentence.trim();
+      } catch (error) {
+        console.error('Error generating example sentence:', error);
+        // Continue even if generation fails
+      }
     }
     
     // Create a new vocabulary
@@ -89,6 +115,7 @@ export async function POST(req: NextRequest) {
       word,
       translation,
       explanation: explanation || '',
+      exampleSentence: finalExampleSentence,
       isRemembered: isRemembered || false,
     });
     

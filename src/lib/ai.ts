@@ -304,6 +304,8 @@ export async function generateVocabularyPractice(topic: string, count: number = 
     4. 品詞
     5. 例文 (英語と日本語訳)
     6. 関連語やコロケーション
+    
+    特に例文は必ず含めるようにしてください。例文は日常会話で使えるような簡潔で分かりやすいものにしてください。
   `;
 
   try {

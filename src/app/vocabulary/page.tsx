@@ -9,15 +9,9 @@ interface VocabularyItem {
   word: string;
   translation: string;
   explanation: string;
+  exampleSentence?: string;
   isRemembered: boolean;
   createdAt: string;
-}
-
-interface GeneratedVocabularyItem {
-  word: string;
-  translation: string;
-  explanation: string;
-  isRemembered: boolean;
 }
 
 export default function VocabularyPage() {
@@ -27,11 +21,6 @@ export default function VocabularyPage() {
   const [vocabularies, setVocabularies] = useState<VocabularyItem[]>([]);
   const [filter, setFilter] = useState<'all' | 'remembered' | 'not-remembered'>('all');
   const [message, setMessage] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedVocabulary, setGeneratedVocabulary] = useState<GeneratedVocabularyItem[]>([]);
-  const [topic, setTopic] = useState('');
-  const [count, setCount] = useState(10);
-  const [showGenerateForm, setShowGenerateForm] = useState(false);
 
   useEffect(() => {
     if (session?.user?.id) {
@@ -111,120 +100,6 @@ export default function VocabularyPage() {
     }
   };
 
-  const generateVocabulary = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsGenerating(true);
-    setGeneratedVocabulary([]);
-    setMessage('');
-
-    try {
-      const response = await fetch('/api/vocabulary/generate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          topic,
-          count,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'ボキャブラリーの生成に失敗しました');
-      }
-
-      const data = await response.json();
-      setGeneratedVocabulary(data.vocabulary);
-    } catch (error: any) {
-      console.error('Failed to generate vocabulary:', error);
-      setMessage(`ボキャブラリーの生成に失敗しました: ${error.message}`);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const saveGeneratedVocabulary = async (vocabulary: GeneratedVocabularyItem) => {
-    try {
-      const response = await fetch('/api/vocabulary', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          word: vocabulary.word,
-          translation: vocabulary.translation,
-          explanation: vocabulary.explanation,
-          isRemembered: false,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to save vocabulary');
-      }
-
-      // Remove from generated list
-      setGeneratedVocabulary(prev => prev.filter(item => item.word !== vocabulary.word));
-      
-      // Refresh the vocabulary list
-      fetchVocabularies();
-      
-      // Show success message
-      setMessage(`「${vocabulary.word}」を保存しました`);
-      
-      // Clear success message after 3 seconds
-      setTimeout(() => setMessage(''), 3000);
-    } catch (error) {
-      console.error('Failed to save vocabulary:', error);
-      setMessage('ボキャブラリーの保存に失敗しました。しばらくしてからもう一度お試しください。');
-    }
-  };
-
-  const saveAllGeneratedVocabulary = async () => {
-    if (generatedVocabulary.length === 0) return;
-    
-    setIsLoading(true);
-    let savedCount = 0;
-    
-    try {
-      for (const vocabulary of generatedVocabulary) {
-        const response = await fetch('/api/vocabulary', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            word: vocabulary.word,
-            translation: vocabulary.translation,
-            explanation: vocabulary.explanation,
-            isRemembered: false,
-          }),
-        });
-        
-        if (response.ok) {
-          savedCount++;
-        }
-      }
-      
-      // Clear the generated list
-      setGeneratedVocabulary([]);
-      
-      // Refresh the vocabulary list
-      fetchVocabularies();
-      
-      // Show success message
-      setMessage(`${savedCount}個の単語を保存しました`);
-      
-      // Clear success message after 3 seconds
-      setTimeout(() => setMessage(''), 3000);
-    } catch (error) {
-      console.error('Failed to save vocabularies:', error);
-      setMessage('一部のボキャブラリーの保存に失敗しました。');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   if (isLoading) {
     return <div className="text-center py-10">読み込み中...</div>;
   }
@@ -274,99 +149,6 @@ export default function VocabularyPage() {
         </div>
       )}
 
-      <div className="flex justify-end mb-4">
-        <button
-          onClick={() => setShowGenerateForm(!showGenerateForm)}
-          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
-        >
-          {showGenerateForm ? '生成フォームを隠す' : 'ボキャブラリーを生成する'}
-        </button>
-      </div>
-
-      {showGenerateForm && (
-        <div className="bg-white shadow rounded-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">ボキャブラリー生成</h2>
-          
-          <form onSubmit={generateVocabulary} className="space-y-4">
-            <div>
-              <label htmlFor="topic" className="block text-sm font-medium text-gray-700">
-                トピック
-              </label>
-              <input
-                type="text"
-                id="topic"
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                placeholder="ビジネス、旅行、医療など"
-                required
-              />
-            </div>
-            
-            <div>
-              <label htmlFor="count" className="block text-sm font-medium text-gray-700">
-                生成する単語数
-              </label>
-              <input
-                type="number"
-                id="count"
-                value={count}
-                onChange={(e) => setCount(parseInt(e.target.value))}
-                min="1"
-                max="20"
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-              />
-            </div>
-            
-            <div className="pt-2">
-              <button
-                type="submit"
-                disabled={isGenerating}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400"
-              >
-                {isGenerating ? '生成中...' : 'ボキャブラリーを生成'}
-              </button>
-            </div>
-          </form>
-          
-          {generatedVocabulary.length > 0 && (
-            <div className="mt-6">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-medium">生成されたボキャブラリー</h3>
-                <button
-                  onClick={saveAllGeneratedVocabulary}
-                  className="px-3 py-1 bg-green-600 text-white text-sm rounded-md hover:bg-green-700"
-                >
-                  すべて保存
-                </button>
-              </div>
-              
-              <div className="bg-gray-50 rounded-md p-4 space-y-4">
-                {generatedVocabulary.map((vocabulary, index) => (
-                  <div key={index} className="border-b pb-3 last:border-0">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-bold">{vocabulary.word}</h4>
-                        <p className="text-gray-700">{vocabulary.translation}</p>
-                        {vocabulary.explanation && (
-                          <p className="text-gray-500 text-sm mt-1">{vocabulary.explanation}</p>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => saveGeneratedVocabulary(vocabulary)}
-                        className="px-2 py-1 bg-blue-600 text-white text-xs rounded-md hover:bg-blue-700"
-                      >
-                        保存
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
       {vocabularies.length === 0 ? (
         <div className="bg-white shadow rounded-lg p-6 text-center text-gray-500">
           単語データがありません。クイズに参加して単語を追加しましょう。
@@ -384,6 +166,9 @@ export default function VocabularyPage() {
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   解説
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  例文
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   ステータス
@@ -404,6 +189,13 @@ export default function VocabularyPage() {
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-500">
                     {vocabulary.explanation}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-500">
+                    {vocabulary.exampleSentence ? (
+                      <p className="italic">{vocabulary.exampleSentence}</p>
+                    ) : (
+                      <p className="text-gray-400">例文なし</p>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <span

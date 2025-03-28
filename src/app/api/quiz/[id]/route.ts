@@ -23,9 +23,9 @@ export async function PUT(
     await connectDB();
     
     // Properly await the params object
-    const id = params.id;
+    const params_id = await params.id;
     
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!mongoose.Types.ObjectId.isValid(params_id)) {
       return NextResponse.json(
         { error: '無効なIDです' },
         { status: 400 }
@@ -60,7 +60,7 @@ export async function PUT(
     
     // Find and update the quiz
     const quiz = await Quiz.findOneAndUpdate(
-      { _id: id, userId: session.user.id },
+      { _id: params_id, userId: session.user.id },
       updateData,
       { new: true }
     );
@@ -99,7 +99,8 @@ export async function DELETE(
     
     await connectDB();
     
-    const { id } = params;
+    // Properly await the params object
+    const id = await params.id;
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json(

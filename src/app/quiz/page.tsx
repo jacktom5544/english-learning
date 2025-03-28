@@ -237,6 +237,7 @@ export default function QuizPage() {
           word: result.question,
           translation: result.choices[result.correctIndex],
           explanation: result.explanation,
+          exampleSentence: result.exampleSentence || '',
           isRemembered: remembered,
         }),
       });

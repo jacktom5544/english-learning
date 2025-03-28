@@ -75,8 +75,9 @@ function parseVocabularyContent(content: string) {
       // Assume second line has the translation
       let translation = '';
       let explanation = '';
+      let exampleSentence = '';
       
-      // Extract translation and explanation
+      // Extract translation, explanation, and example sentence
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (line.includes(':')) {
@@ -84,8 +85,10 @@ function parseVocabularyContent(content: string) {
           
           if (key.includes('日本語') || key.includes('意味')) {
             translation = value;
-          } else if (!explanation && (key.includes('例文') || key.includes('explanation'))) {
+          } else if (!explanation && (key.includes('説明') || key.includes('explanation'))) {
             explanation = value;
+          } else if (key.includes('例文') || key.includes('example')) {
+            exampleSentence = value;
           }
         } else if (!translation) {
           // If no specific format, assume the second line is translation
@@ -102,6 +105,7 @@ function parseVocabularyContent(content: string) {
           word,
           translation,
           explanation: explanation || '',
+          exampleSentence: exampleSentence || '',
           isRemembered: false
         });
       }
@@ -114,6 +118,7 @@ function parseVocabularyContent(content: string) {
       word: "Example",
       translation: "例",
       explanation: "This is an example vocabulary item",
+      exampleSentence: "Can you give me an example of how to use this word?",
       isRemembered: false
     });
   }

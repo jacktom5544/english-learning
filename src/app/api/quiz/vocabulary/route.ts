@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     await connectDB();
     
     const body = await req.json();
-    const { word, translation, explanation, isRemembered } = body;
+    const { word, translation, explanation, exampleSentence, isRemembered } = body;
     
     if (!word || !translation) {
       safeLog('Vocabulary API: Missing required fields', { word: !!word, translation: !!translation });
@@ -47,6 +47,10 @@ export async function POST(req: NextRequest) {
       });
       
       existingVocabulary.isRemembered = isRemembered;
+      // Update example sentence if it doesn't already exist
+      if (exampleSentence && !existingVocabulary.exampleSentence) {
+        existingVocabulary.exampleSentence = exampleSentence;
+      }
       await existingVocabulary.save();
       return NextResponse.json(existingVocabulary);
     }
@@ -62,6 +66,7 @@ export async function POST(req: NextRequest) {
       word,
       translation,
       explanation: explanation || '',
+      exampleSentence: exampleSentence || '',
       isRemembered: isRemembered || false,
     });
     
