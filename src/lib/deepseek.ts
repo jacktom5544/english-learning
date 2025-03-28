@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import 'server-only';
 
 // Initialize DeepSeek client with OpenAI-compatible API
 const apiKey = process.env.DEEPSEEK_API_KEY || '';

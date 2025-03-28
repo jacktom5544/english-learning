@@ -1,4 +1,5 @@
 import deepseek from './deepseek';
+import 'server-only';
 
 // Define the role type to match OpenAI's expectations
 type MessageRole = 'system' | 'user' | 'assistant';

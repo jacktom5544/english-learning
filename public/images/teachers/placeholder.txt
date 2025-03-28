@@ -1,0 +1,7 @@
+Teacher photos should be placed in this directory.
+
+Replace with actual photos of:
+1. michael.png - A friendly 40s male teacher from New York
+2. emily.png - A cheerful 20s female teacher from Los Angeles
+
+For now, the app will display initials as a fallback. 

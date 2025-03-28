@@ -49,6 +49,7 @@ export default function Sidebar() {
               <NavLink href="/quiz">クイズ</NavLink>
               <NavLink href="/vocabulary">単語</NavLink>
               <NavLink href="/writing">ライティング</NavLink>
+              <NavLink href="/conversation">会話</NavLink>
             </nav>
           </div>
           <div className="p-4 border-t border-gray-700">
@@ -122,6 +123,7 @@ export default function Sidebar() {
                 <NavLink href="/quiz">クイズ</NavLink>
                 <NavLink href="/vocabulary">単語</NavLink>
                 <NavLink href="/writing">ライティング</NavLink>
+                <NavLink href="/conversation">会話</NavLink>
               </nav>
             </div>
             <div className="p-4 border-t border-gray-700">
