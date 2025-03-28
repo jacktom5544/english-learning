@@ -20,10 +20,18 @@ export async function GET(req: NextRequest) {
     
     await connectDB();
     
-    // Get status filter from URL if present
+    // Get parameters from URL
     const url = new URL(req.url);
     const filterParam = url.searchParams.get('filter');
+    const pageParam = url.searchParams.get('page') || '1';
+    const limitParam = url.searchParams.get('limit') || '10';
     
+    // Parse pagination parameters
+    const page = parseInt(pageParam, 10);
+    const limit = parseInt(limitParam, 10);
+    const skip = (page - 1) * limit;
+    
+    // Create filter for query
     let filter: any = { userId: session.user.id };
     
     if (filterParam === 'remembered') {
@@ -32,9 +40,24 @@ export async function GET(req: NextRequest) {
       filter.isRemembered = false;
     }
     
-    const vocabularies = await Vocabulary.find(filter).sort({ createdAt: -1 });
+    // Count total items for pagination
+    const total = await Vocabulary.countDocuments(filter);
     
-    return NextResponse.json(vocabularies);
+    // Get paginated vocabularies
+    const vocabularies = await Vocabulary.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+    
+    return NextResponse.json({
+      vocabularies,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
   } catch (error) {
     console.error('Error fetching vocabularies:', error);
     return NextResponse.json(
