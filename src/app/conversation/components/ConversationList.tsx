@@ -2,6 +2,8 @@
 
 import { format } from 'date-fns';
 import { IConversation } from '@/models/Conversation';
+import Image from 'next/image';
+import { TEACHER_PROFILES } from '@/lib/teachers';
 
 interface ConversationListProps {
   conversations: IConversation[];
@@ -34,8 +36,13 @@ export default function ConversationList({
           }`}
         >
           <div className="flex items-center">
-            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-              {conversation.teacher === 'michael' ? 'M' : 'E'}
+            <div className="w-10 h-10 rounded-full overflow-hidden relative flex-shrink-0">
+              <Image
+                src={`/images/teachers/${conversation.teacher}.png`}
+                alt={TEACHER_PROFILES[conversation.teacher as keyof typeof TEACHER_PROFILES]?.name || 'Teacher'}
+                fill
+                className="object-cover"
+              />
             </div>
             <div className="ml-3 flex-1 overflow-hidden">
               <div className="flex justify-between">

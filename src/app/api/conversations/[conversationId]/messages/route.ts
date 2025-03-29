@@ -68,8 +68,11 @@ export async function POST(
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
+    // Extract the conversation ID as a string
+    const conversationId = params.conversationId;
+
     // Find conversation and verify ownership
-    const conversation = await Conversation.findById(params.conversationId);
+    const conversation = await Conversation.findById(conversationId);
     
     if (!conversation) {
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
