@@ -69,7 +69,7 @@ export async function POST(
     }
 
     // Extract the conversation ID as a string
-    const conversationId = params.conversationId;
+    const { conversationId } = params;
 
     // Find conversation and verify ownership
     const conversation = await Conversation.findById(conversationId);

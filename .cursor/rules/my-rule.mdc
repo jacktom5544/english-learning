@@ -6,6 +6,11 @@ alwaysApply: false
 ---
 description: 
 globs: 
+alwaysApply: false
+---
+---
+description: 
+globs: 
 alwaysApply: true
 ---
 
@@ -19,8 +24,9 @@ Database Name is english-learning(alreday created)
 Tailwind CSS
 Make modern looking website
 Cloudinary for image storage
-Shadcn UI for graph/charts
-Make .env.local, then I will input actual keys later
+Recharts for graph/charts
 The website should be fully Responsive(PC, Tablet and Smartphone)
 Since this service is for Japanese, UI should be in Japanese
 Use Deepseek chat for generating English quiz/writing topic and giving a feedback to the students
+Make sure the code you generate is secure and follows the best practice
+Don't edit content of .env.local

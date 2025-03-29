@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
@@ -49,7 +49,9 @@ export default function ProfilePage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [message, setMessage] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [profile, setProfile] = useState({
     name: '',
     englishLevel: 'beginner',
@@ -57,6 +59,8 @@ export default function ProfilePage() {
     goal: '',
     image: '',
     preferredTeacher: 'taro',
+    startReason: '',
+    struggles: '',
   });
 
   useEffect(() => {
@@ -77,6 +81,8 @@ export default function ProfilePage() {
           goal: userData.goal || '',
           image: userData.image || '',
           preferredTeacher: userData.preferredTeacher || 'taro',
+          startReason: userData.startReason || '',
+          struggles: userData.struggles || '',
         });
       }
     } catch (error) {
@@ -91,6 +97,57 @@ export default function ProfilePage() {
     setProfile(prev => ({ ...prev, [name]: value }));
   };
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) { // 5MB
+      setMessage('画像サイズは5MB以下にしてください');
+      return;
+    }
+
+    try {
+      setIsUploading(true);
+      
+      // Convert file to base64
+      const base64String = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      
+      // Upload to Cloudinary via API route
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ image: base64String }),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'アップロードに失敗しました');
+      }
+      
+      const data = await response.json();
+      
+      // Update profile with the Cloudinary URL
+      setProfile(prev => ({ ...prev, image: data.url }));
+      setMessage('画像がアップロードされました');
+    } catch (error: any) {
+      console.error('Image upload error:', error);
+      setMessage(error.message || 'アップロードに失敗しました');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleImageClick = () => {
+    fileInputRef.current?.click();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
@@ -102,11 +159,19 @@ export default function ProfilePage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(profile),
+        body: JSON.stringify({
+          ...profile,
+          // Ensure these fields are explicitly sent even if empty
+          startReason: profile.startReason || '',
+          struggles: profile.struggles || ''
+        }),
       });
 
       if (response.ok) {
         setMessage('プロフィールが更新されました');
+        
+        // Re-fetch user profile to ensure data is up-to-date
+        fetchUserProfile();
       } else {
         const data = await response.json();
         setMessage(data.error || 'プロフィールの更新に失敗しました');
@@ -134,6 +199,56 @@ export default function ProfilePage() {
 
       <form onSubmit={handleSubmit} className="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4">
         <div className="space-y-6">
+          <div className="mb-6">
+            <label htmlFor="image" className="block text-sm font-medium text-gray-700 mb-2">
+              プロフィール画像
+            </label>
+            <div className="flex items-center space-x-6">
+              <div 
+                className="w-24 h-24 relative border border-gray-300 rounded-full overflow-hidden bg-gray-100 cursor-pointer hover:opacity-80 transition-opacity"
+                onClick={handleImageClick}
+              >
+                {profile.image ? (
+                  <Image 
+                    src={profile.image} 
+                    alt="プロフィール画像" 
+                    fill 
+                    style={{ objectFit: 'cover' }} 
+                    className="rounded-full"
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-3xl text-gray-400">
+                    👤
+                  </div>
+                )}
+                <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-20 opacity-0 hover:opacity-100 transition-opacity">
+                  <span className="text-white text-xs font-medium">変更</span>
+                </div>
+              </div>
+              <div className="flex-1">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  id="imageUpload"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={handleImageClick}
+                  disabled={isUploading}
+                  className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                >
+                  {isUploading ? '画像をアップロード中...' : '画像をアップロード'}
+                </button>
+                <p className="mt-1 text-sm text-gray-500">
+                  JPG、PNG、GIF形式。最大5MB。推奨サイズ: 200 x 200 px
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div>
             <label htmlFor="name" className="block text-sm font-medium text-gray-700">
               ニックネーム
@@ -196,6 +311,36 @@ export default function ProfilePage() {
               onChange={handleChange}
               className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-blue-500"
               placeholder="例: 海外の病院で働きたい、海外の取引先と商談できるようになりたいなど"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="startReason" className="block text-sm font-medium text-gray-700">
+              何故英語学習を始めようと思ったのか？
+            </label>
+            <textarea
+              id="startReason"
+              name="startReason"
+              rows={3}
+              value={profile.startReason}
+              onChange={handleChange}
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+              placeholder="例: 海外の友人と会話がしたい、仕事で必要になったなど"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="struggles" className="block text-sm font-medium text-gray-700">
+              英語学習での悩み事
+            </label>
+            <textarea
+              id="struggles"
+              name="struggles"
+              rows={3}
+              value={profile.struggles}
+              onChange={handleChange}
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+              placeholder="例: 文法が覚えられない、リスニングが苦手など"
             />
           </div>
 

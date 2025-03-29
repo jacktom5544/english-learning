@@ -82,14 +82,20 @@ export async function generateTeacherGreeting(teacher: TeacherType, user: IUser)
   const userName = user.name;
   const userJob = user.job || 'not specified';
   const userGoal = user.goal || 'not specified';
+  const startReason = user.startReason || 'not specified';
+  const struggles = user.struggles || 'not specified';
   
   // Create a prompt for the AI
   const prompt = `
     You're starting a new conversation with a student named ${userName}.
     Their job is: ${userJob}
     Their English learning goal is: ${userGoal}
+    Why they started learning English: ${startReason}
+    Their struggles with English learning: ${struggles}
     
-    Create a warm, friendly greeting that introduces yourself and references their job and goal.
+    Create a warm, friendly greeting that introduces yourself and references some of their background information.
+    If they specified why they started learning English, acknowledge that motivation.
+    If they mentioned struggles with learning English, empathize with those challenges but be encouraging.
     Ask how they're doing and if there's anything specific they'd like to practice.
   `;
   
@@ -111,9 +117,9 @@ export async function generateTeacherGreeting(teacher: TeacherType, user: IUser)
     
     // Fallback to hardcoded responses if API fails
     if (teacher === 'michael') {
-      return `Hello ${userName}! I'm Michael, your English teacher. I'm from New York and I used to work in the automobile industry before becoming a teacher. I noticed from your profile that your job is "${userJob}" and your English learning goal is "${userGoal}". That's great! How are you doing today? Is there anything specific you'd like to practice?`;
+      return `Hello ${userName}! I'm Michael, your English teacher. I'm from New York and I used to work in the automobile industry before becoming a teacher. I noticed from your profile that your job is "${userJob}" and your English learning goal is "${userGoal}". ${startReason !== 'not specified' ? `It's interesting to hear that you started learning English because "${startReason}".` : ''} ${struggles !== 'not specified' ? `I understand you've been struggling with "${struggles}" - don't worry, we'll work on that together.` : ''} How are you doing today? Is there anything specific you'd like to practice?`;
     } else {
-      return `Hi ${userName}! I'm Emily from Los Angeles! I'm super excited to be your English teacher! I love anime and Japanese culture! I see from your profile that your job is "${userJob}" and your goal is "${userGoal}". That's awesome! How's your day going? Is there something specific you want to talk about today?`;
+      return `Hi ${userName}! I'm Emily from Los Angeles! I'm super excited to be your English teacher! I love anime and Japanese culture! I see from your profile that your job is "${userJob}" and your goal is "${userGoal}". ${startReason !== 'not specified' ? `That's so cool that you started learning English because "${startReason}"!` : ''} ${struggles !== 'not specified' ? `Oh, and don't worry about struggling with "${struggles}" - we'll totally tackle that together!` : ''} How's your day going? Is there something specific you want to talk about today?`;
     }
   }
 }
@@ -151,11 +157,27 @@ export async function generateTeacherResponse(
       });
     }
     
+    // Add user profile information to system prompt
+    const userProfile = `
+Student information:
+- Name: ${user.name}
+- Job: ${user.job || 'Not specified'}
+- English learning goal: ${user.goal || 'Not specified'}
+- Why they started learning English: ${user.startReason || 'Not specified'}
+- Their struggles with English learning: ${user.struggles || 'Not specified'}
+    `;
+    
+    const enhancedSystemPrompt = `${TEACHER_PROFILES[teacher].systemPrompt}
+    
+${userProfile}
+
+When relevant to the conversation, you may reference why they started learning English or their learning struggles. Be supportive about their struggles and relate to their motivation for learning English, but don't force these topics into every response. Only mention them when the conversation naturally allows for it or when they're directly relevant to the student's message.`;
+    
     // Generate response with the AI
     const response = await generateAIResponse(formattedHistory, {
       maxTokens: 350,
       temperature: 0.7,
-      systemPrompt: TEACHER_PROFILES[teacher].systemPrompt
+      systemPrompt: enhancedSystemPrompt
     });
     
     return response;
@@ -166,28 +188,32 @@ export async function generateTeacherResponse(
     const userName = user.name;
     const lowerCaseMessage = userMessage.toLowerCase();
     
+    // Include some references to user's learning motivations and struggles in fallback responses
+    const strugglesReference = user.struggles ? `I remember you mentioned struggling with "${user.struggles}". ` : '';
+    const motivationReference = user.startReason ? `Your reason for learning English ("${user.startReason}") is really important. ` : '';
+    
     // Check for common conversation topics
     if (lowerCaseMessage.includes('how are you') || lowerCaseMessage.includes('how do you do')) {
       if (teacher === 'michael') {
-        return `I'm doing well, ${userName}. Thank you for asking! I just helped my daughter with her homework earlier today. How about you?`;
+        return `I'm doing well, ${userName}. Thank you for asking! I just helped my daughter with her homework earlier today. How about you? ${strugglesReference}Is there anything specific you'd like to work on today?`;
       } else {
-        return `I'm super excited today, ${userName}! I just watched the latest One Piece episode and it was AMAZING! How are you doing?`;
+        return `I'm super excited today, ${userName}! I just watched the latest One Piece episode and it was AMAZING! ${motivationReference}How are you doing?`;
       }
     }
     
     if (lowerCaseMessage.includes('hobby') || lowerCaseMessage.includes('interest') || lowerCaseMessage.includes('like to do')) {
       if (teacher === 'michael') {
-        return `I enjoy spending time with my family, especially my 6-year-old daughter. We often go hiking on weekends. I also still have an interest in cars from my previous job. What about you, ${userName}? What are your hobbies?`;
+        return `I enjoy spending time with my family, especially my 6-year-old daughter. We often go hiking on weekends. I also still have an interest in cars from my previous job. ${strugglesReference}What about you, ${userName}? What are your hobbies?`;
       } else {
-        return `I absolutely LOVE anime and manga! One Piece and Slam Dunk are my favorites - I've read One Piece over 100 times! I also enjoy traveling to Japan - I've been there more than 10 times! The temples in Kyoto are so beautiful. Do you like anime too, ${userName}?`;
+        return `I absolutely LOVE anime and manga! One Piece and Slam Dunk are my favorites - I've read One Piece over 100 times! I also enjoy traveling to Japan - I've been there more than 10 times! The temples in Kyoto are so beautiful. ${motivationReference}Do you like anime too, ${userName}?`;
       }
     }
     
     // Default responses if no specific topics detected
     if (teacher === 'michael') {
-      return `That's interesting, ${userName}. Would you like to talk more about that? Or perhaps we could discuss something related to your English learning goals?`;
+      return `That's interesting, ${userName}. ${strugglesReference}${motivationReference}Would you like to talk more about that? Or perhaps we could discuss something related to your English learning goals?`;
     } else {
-      return `That's awesome, ${userName}! Hey, have I told you about my last trip to Japan? The food was AMAZING! Anyway, let's keep practicing your English! What would you like to talk about next?`;
+      return `That's awesome, ${userName}! ${motivationReference}${strugglesReference}Hey, have I told you about my last trip to Japan? The food was AMAZING! Anyway, let's keep practicing your English! What would you like to talk about next?`;
     }
   }
 }

@@ -60,7 +60,8 @@ export async function PUT(
       );
     }
 
-    const { name, englishLevel, job, goal, preferredTeacher } = await request.json();
+    const requestBody = await request.json();
+    const { name, englishLevel, job, goal, preferredTeacher, image, startReason, struggles } = requestBody;
 
     // Validate inputs
     if (!name) {
@@ -87,6 +88,9 @@ export async function PUT(
     if (job !== undefined) user.job = job;
     if (goal !== undefined) user.goal = goal;
     if (preferredTeacher !== undefined) user.preferredTeacher = preferredTeacher;
+    if (image !== undefined) user.image = image;
+    if (startReason !== undefined) user.startReason = startReason;
+    if (struggles !== undefined) user.struggles = struggles;
     
     await user.save();
     
@@ -100,6 +104,9 @@ export async function PUT(
         job: user.job,
         goal: user.goal,
         preferredTeacher: user.preferredTeacher,
+        image: user.image ? 'present' : null,
+        startReason: user.startReason,
+        struggles: user.struggles,
       }
     });
   } catch (error) {
