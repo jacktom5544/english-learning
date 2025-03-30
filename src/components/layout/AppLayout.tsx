@@ -36,7 +36,7 @@ export default function AppLayout({
     <div className="min-h-screen bg-gray-100">
       {showSidebar && <Sidebar />}
       
-      <div className={`flex flex-col flex-1 ${showSidebar ? 'md:pl-64' : ''}`}>
+      <div className={`flex flex-col flex-1 ${showSidebar ? 'lg:pl-64' : ''}`}>
         <main className="flex-1">
           <div className="py-6">
             <div className="mx-auto px-4 sm:px-6 md:px-8">

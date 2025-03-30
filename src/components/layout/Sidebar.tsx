@@ -35,7 +35,7 @@ export default function Sidebar() {
   return (
     <>
       {/* Desktop Sidebar */}
-      <div className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0">
+      <div className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0">
         <div className="flex flex-col flex-grow bg-gray-900 overflow-y-auto">
           <div className="flex items-center h-16 flex-shrink-0 px-4 bg-gray-800">
             <Link href="/dashboard" className="text-white text-lg font-bold">
@@ -67,7 +67,7 @@ export default function Sidebar() {
       </div>
 
       {/* Mobile menu button */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-gray-800 px-4 h-16 flex items-center justify-between">
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-gray-800 px-4 h-16 flex items-center justify-between">
         <span className="text-white text-lg font-bold">English Learning</span>
         <button
           type="button"
@@ -93,7 +93,7 @@ export default function Sidebar() {
 
       {/* Mobile Sidebar */}
       {isMobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 z-30 bg-black bg-opacity-50">
+        <div className="lg:hidden fixed inset-0 z-30 bg-black bg-opacity-50">
           <div className="fixed inset-y-0 left-0 flex flex-col w-64 bg-gray-900 overflow-y-auto">
             <div className="flex items-center h-16 flex-shrink-0 px-4 bg-gray-800 justify-between">
               <Link href="/dashboard" className="text-white text-lg font-bold">
