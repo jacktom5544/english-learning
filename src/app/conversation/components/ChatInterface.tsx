@@ -5,6 +5,8 @@ import { useSession } from 'next-auth/react';
 import { IConversation } from '@/models/Conversation';
 import { format } from 'date-fns';
 import { TEACHER_PROFILES } from '@/lib/teachers';
+import { POINT_CONSUMPTION } from '@/lib/pointSystem';
+import { useUserPoints } from '@/components/providers/UserPointsProvider';
 import TypingIndicator from './TypingIndicator';
 import Image from 'next/image';
 
@@ -22,6 +24,7 @@ type Message = {
 
 export default function ChatInterface({ conversation, onConversationUpdate }: ChatInterfaceProps) {
   const { data: session } = useSession();
+  const { consumePoints } = useUserPoints();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isGrammarCorrectionEnabled, setIsGrammarCorrectionEnabled] = useState(false);
@@ -66,6 +69,13 @@ export default function ChatInterface({ conversation, onConversationUpdate }: Ch
     setIsLoading(true);
     
     try {
+      // Consume points client-side
+      const pointsConsumed = await consumePoints(POINT_CONSUMPTION.CONVERSATION_CHAT);
+      
+      if (!pointsConsumed) {
+        throw new Error('Not enough points');
+      }
+      
       const userMessage = {
         sender: 'user' as const,
         content: userMessageContent,
@@ -81,7 +91,7 @@ export default function ChatInterface({ conversation, onConversationUpdate }: Ch
         setIsTeacherTyping(true);
       }, 500);
 
-      // Send message to API
+      // Send message to API - we don't need to consume points server-side now
       const response = await fetch(`/api/conversations/${conversationRef.current._id}/messages`, {
         method: 'POST',
         headers: {
@@ -90,6 +100,7 @@ export default function ChatInterface({ conversation, onConversationUpdate }: Ch
         body: JSON.stringify({
           content: userMessageContent,
           grammarCorrection: isGrammarCorrectionEnabled,
+          skipPointsConsumption: true, // Tell server we already consumed points
         }),
       });
 
@@ -149,17 +160,22 @@ export default function ChatInterface({ conversation, onConversationUpdate }: Ch
       setIsTeacherTyping(false);
       console.error('Error sending message:', error);
       
-      // Add a generic error message
+      // Check if the error is about points
+      const errorMessage = (error instanceof Error && error.message === 'Not enough points') 
+        ? "申し訳ありませんが、ポイントが不足しています。プロフィールページでポイント状況を確認してください。"
+        : "エラーが発生しました。ネットワーク接続を確認して、もう一度お試しください。";
+      
+      // Add a system error message
       const systemErrorMessage = {
         sender: 'teacher' as const,
-        content: "エラーが発生しました。ネットワーク接続を確認して、もう一度お試しください。",
+        content: errorMessage,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, systemErrorMessage]);
     } finally {
       setIsLoading(false);
     }
-  }, [newMessage, isLoading, isGrammarCorrectionEnabled]);
+  }, [newMessage, isLoading, isGrammarCorrectionEnabled, consumePoints]);
 
   const renderTeacherInfo = useCallback(() => {
     return (

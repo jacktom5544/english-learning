@@ -40,22 +40,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check and consume points
-    const updatedUser = await consumePoints(user._id, POINT_CONSUMPTION.QUIZ_START);
+    // Get request data if any
+    const data = await req.json().catch(() => ({}));
+
+    // Check if points consumption should be skipped (if already handled client-side)
+    const skipPointsConsumption = data.skipPointsConsumption === true;
     
-    if (!updatedUser) {
-      return NextResponse.json(
-        { error: 'ポイントが不足しています' },
-        { status: 403 }
-      );
+    // Check and consume points only if not skipped
+    let updatedUser = user;
+    if (!skipPointsConsumption) {
+      updatedUser = await consumePoints(user._id, POINT_CONSUMPTION.QUIZ_START);
+      
+      if (!updatedUser) {
+        return NextResponse.json(
+          { 
+            error: 'ポイントが不足しています',
+            currentPoints: user.points || 0,
+            requiredPoints: POINT_CONSUMPTION.QUIZ_START 
+          },
+          { status: 403 }
+        );
+      }
     }
 
     console.log('POST /api/quiz: User found, generating questions');
     
     try {
-      // Get request data if any
-      const data = await req.json().catch(() => ({}));
-      
       // Get user info
       const level = data.englishLevel || user.englishLevel || 'intermediate';
       const job = data.job || user.job || '';

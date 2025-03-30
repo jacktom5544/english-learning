@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { POINT_CONSUMPTION } from '@/lib/pointSystem';
-import { usePoints } from '@/hooks/usePoints';
+import { useUserPoints } from '@/components/providers/UserPointsProvider';
 
 interface QuizQuestion {
   question: string;
@@ -27,13 +27,13 @@ interface QuizResult {
 interface UserProfile {
   id: string;
   username: string;
-  points: number;
+  points: number | null;
 }
 
 export default function QuizPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const { points, loading: pointsLoading, refreshPoints } = usePoints();
+  const { points, pointsUsedThisMonth, isLoading: pointsLoading, consumePoints, refreshPoints } = useUserPoints();
   const [isLoading, setIsLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
@@ -63,7 +63,7 @@ export default function QuizPage() {
       setUserProfile({
         id: profileData.id || session?.user?.id || '',
         username: profileData.username || profileData.email || session?.user?.email || '',
-        points: points // Use points from the usePoints hook
+        points: points // Use points from the useUserPoints hook (can be null)
       });
     } catch (error) {
       console.error('Failed to fetch user profile:', error);
@@ -91,14 +91,23 @@ export default function QuizPage() {
   }, [points, userProfile]);
 
   const generateQuiz = async () => {
-    if (isGenerating) return;
+    if (isGenerating || points === null) return;
     
     setIsGenerating(true);
     setMessage('');
     console.log('Starting quiz generation...');
-    console.log('Current points:', userProfile?.points);
+    console.log('Current points:', points);
     
     try {
+      // Consume points client-side first
+      const pointsConsumed = await consumePoints(POINT_CONSUMPTION.QUIZ_START);
+      
+      if (!pointsConsumed) {
+        setMessage(`ポイントが不足しています。現在のポイント: ${points}, 必要なポイント: ${POINT_CONSUMPTION.QUIZ_START}`);
+        setIsGenerating(false);
+        return;
+      }
+      
       console.log('Sending quiz generation request...');
       const response = await fetch('/api/quiz', {
         method: 'POST',
@@ -107,6 +116,7 @@ export default function QuizPage() {
         },
         body: JSON.stringify({
           count: 10, // Request 10 quiz questions
+          skipPointsConsumption: true, // Tell server we already consumed points
         }),
       });
 
@@ -115,32 +125,28 @@ export default function QuizPage() {
       const responseText = await response.text();
       console.log('Response text:', responseText);
       
-      let errorData;
+      let quizData;
       try {
-        errorData = JSON.parse(responseText);
+        quizData = JSON.parse(responseText);
       } catch (e) {
-        errorData = { error: responseText || 'Unknown error' };
+        throw new Error(responseText || 'Unknown error');
       }
       
       if (!response.ok) {
-        console.error('Quiz generation failed:', errorData);
+        console.error('Quiz generation failed:', quizData);
         
-        // Handle insufficient points error
+        // If server still reports insufficient points (unlikely since we checked client-side)
         if (response.status === 403) {
-          setMessage(`ポイントが不足しています。${errorData.currentPoints !== undefined ? `現在のポイント: ${errorData.currentPoints}, 必要なポイント: ${errorData.requiredPoints || 1}` : ''}` );
-          // Refresh points after an error
+          setMessage(`ポイントが不足しています。${quizData.currentPoints !== undefined ? `現在のポイント: ${quizData.currentPoints}, 必要なポイント: ${quizData.requiredPoints || 1}` : ''}`);
+          // Refresh points
           refreshPoints();
           setIsGenerating(false);
           return;
         }
         
-        throw new Error(errorData?.error || 'クイズの生成に失敗しました');
+        throw new Error(quizData?.error || 'クイズの生成に失敗しました');
       }
 
-      // Parse the response as JSON
-      const quizData = errorData;
-      console.log('Quiz data received:', quizData);
-      
       // Extract quiz ID from the response
       if (quizData._id) {
         setQuizId(quizData._id);
@@ -323,7 +329,9 @@ export default function QuizPage() {
           
           <div className="mb-4">
             <div className="inline-flex items-center px-3 py-1 bg-blue-50 border border-blue-200 text-blue-600 rounded-full mb-4">
-              <span>現在のポイント: <span className="font-semibold">{points}</span></span>
+              <span>現在のポイント: <span className="font-semibold">
+                {pointsLoading || points === null ? "..." : points}
+              </span></span>
               <button 
                 onClick={refreshPoints}
                 className="ml-2 text-xs text-blue-600 hover:text-blue-800"
@@ -336,24 +344,24 @@ export default function QuizPage() {
             </div>
           </div>
           
-          {points < POINT_CONSUMPTION.QUIZ_START && (
-            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded mb-6 mx-auto max-w-md">
+          {!pointsLoading && points !== null && points < POINT_CONSUMPTION.QUIZ_START && (
+            <div className="text-yellow-700 bg-yellow-50 border border-yellow-200 px-4 py-3 rounded">
               ポイントが不足しています。必要なポイント: {POINT_CONSUMPTION.QUIZ_START}, 現在のポイント: {points}
             </div>
           )}
           
           <button
             onClick={generateQuiz}
-            disabled={isGenerating || points < POINT_CONSUMPTION.QUIZ_START}
+            disabled={isGenerating || pointsLoading || points === null || points < POINT_CONSUMPTION.QUIZ_START}
             className={`px-8 py-3 rounded-lg font-medium text-white ${
-              isGenerating || points < POINT_CONSUMPTION.QUIZ_START
+              isGenerating || pointsLoading || points === null || points < POINT_CONSUMPTION.QUIZ_START
                 ? 'bg-gray-400 cursor-not-allowed'
                 : 'bg-blue-600 hover:bg-blue-700'
             } transition-colors`}
           >
             {isGenerating ? 'クイズを作成中...' : 
-             (points < POINT_CONSUMPTION.QUIZ_START) ? 
-             'ポイントが不足しています' : 'クイズを始める'}
+             pointsLoading || points === null ? 'ポイントを読み込み中...' :
+             points < POINT_CONSUMPTION.QUIZ_START ? 'ポイントが不足しています' : 'クイズを始める'}
           </button>
           
           {isGenerating && (

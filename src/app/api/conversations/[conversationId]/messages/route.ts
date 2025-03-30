@@ -24,7 +24,7 @@ export async function POST(
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    const { content, grammarCorrection } = await req.json();
+    const { content, grammarCorrection, skipPointsConsumption } = await req.json();
     
     if (!content || typeof content !== 'string') {
       return NextResponse.json({ error: 'Valid message content required' }, { status: 400 });
@@ -54,11 +54,18 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized access to conversation' }, { status: 403 });
     }
 
-    // Check and consume points
-    const updatedUser = await consumePoints(user._id, POINT_CONSUMPTION.CONVERSATION_CHAT);
-    
-    if (!updatedUser) {
-      return NextResponse.json({ error: 'Not enough points' }, { status: 403 });
+    // Check and consume points only if not already done by the client
+    let updatedUser = user;
+    if (!skipPointsConsumption) {
+      updatedUser = await consumePoints(user._id, POINT_CONSUMPTION.CONVERSATION_CHAT);
+      
+      if (!updatedUser) {
+        return NextResponse.json({ 
+          error: 'Not enough points', 
+          currentPoints: user.points || 0,
+          requiredPoints: POINT_CONSUMPTION.CONVERSATION_CHAT 
+        }, { status: 403 });
+      }
     }
 
     // Add user message

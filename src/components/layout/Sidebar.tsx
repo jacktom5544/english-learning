@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { signOut, useSession } from 'next-auth/react';
 import { useState, useEffect } from 'react';
+import { useUserPoints } from '../providers/UserPointsProvider';
 
 interface NavLinkProps {
   href: string;
@@ -34,47 +35,12 @@ export default function Sidebar() {
   const { data: session } = useSession();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const pathname = usePathname();
-  const [userPoints, setUserPoints] = useState({ 
-    points: session?.user?.points || 0, 
-    pointsUsedThisMonth: 0 
-  });
+  const { points, pointsUsedThisMonth, isLoading } = useUserPoints();
   
   // Close the mobile menu when pathname changes (user navigates to a new page)
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [pathname]);
-
-  // Initialize points from session if available
-  useEffect(() => {
-    if (session?.user?.points) {
-      setUserPoints(prev => ({
-        ...prev,
-        points: session.user.points as number
-      }));
-    }
-  }, [session?.user?.points]);
-
-  // Fetch user points
-  useEffect(() => {
-    if (session?.user?.email) {
-      const fetchUserPoints = async () => {
-        try {
-          const res = await fetch('/api/users/points');
-          if (res.ok) {
-            const data = await res.json();
-            setUserPoints({
-              points: data.points,
-              pointsUsedThisMonth: data.pointsUsedThisMonth
-            });
-          }
-        } catch (error) {
-          console.error('Failed to fetch user points:', error);
-        }
-      };
-      
-      fetchUserPoints();
-    }
-  }, [session?.user?.email]);
 
   return (
     <>
@@ -154,8 +120,14 @@ export default function Sidebar() {
             <div className="flex flex-col">
               <span className="text-white text-sm mb-2">{session?.user?.name}</span>
               <div className="text-gray-300 text-xs mb-3">
-                <div>今月の残りのポイント：{userPoints.points}</div>
-                <div>今月の消費ポイント：{userPoints.pointsUsedThisMonth}</div>
+                {isLoading || points === null ? (
+                  <div>...</div>
+                ) : (
+                  <>
+                    <div>今月の残りのポイント：{points}</div>
+                    <div>今月の消費ポイント：{pointsUsedThisMonth}</div>
+                  </>
+                )}
               </div>
               <button
                 onClick={() => signOut({ callbackUrl: '/' })}
@@ -285,8 +257,14 @@ export default function Sidebar() {
             <div className="flex flex-col">
               <span className="text-white text-sm mb-2">{session?.user?.name}</span>
               <div className="text-gray-300 text-xs mb-3">
-                <div>今月の残りのポイント：{userPoints.points}</div>
-                <div>今月の消費ポイント：{userPoints.pointsUsedThisMonth}</div>
+                {isLoading || points === null ? (
+                  <div>...</div>
+                ) : (
+                  <>
+                    <div>今月の残りのポイント：{points}</div>
+                    <div>今月の消費ポイント：{pointsUsedThisMonth}</div>
+                  </>
+                )}
               </div>
               <button
                 onClick={() => signOut({ callbackUrl: '/' })}

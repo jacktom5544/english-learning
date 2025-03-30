@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Noto_Sans_JP } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/providers/AuthProvider";
+import { UserPointsProvider } from "@/components/providers/UserPointsProvider";
 import AppLayout from "@/components/layout/AppLayout";
 
 const geistSans = Geist({
@@ -41,7 +42,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${notoSansJP.variable} antialiased`}
       >
         <AuthProvider>
-          <AppLayout>{children}</AppLayout>
+          <UserPointsProvider>
+            <AppLayout>{children}</AppLayout>
+          </UserPointsProvider>
         </AuthProvider>
       </body>
     </html>
