@@ -93,6 +93,9 @@ export default function ChatInterface({ conversation, onConversationUpdate }: Ch
         }),
       });
 
+      // Prepare to handle the response
+      let errorMessage = null;
+      
       if (response.ok) {
         const data = await response.json();
         // Hide typing indicator before showing the response
@@ -110,12 +113,49 @@ export default function ChatInterface({ conversation, onConversationUpdate }: Ch
           }, 1000);
         }, 300);
       } else {
+        // Handle different error responses
         setIsTeacherTyping(false);
-        console.error('Failed to send message');
+        let errorData;
+        
+        try {
+          errorData = await response.json();
+        } catch (e) {
+          errorData = { error: "Failed to parse server response" };
+        }
+        
+        // Handle specific error cases
+        if (response.status === 403 && errorData.error === 'Not enough points') {
+          errorMessage = "申し訳ありませんが、ポイントが不足しています。プロフィールページでポイント状況を確認してください。";
+        } else if (response.status === 401) {
+          errorMessage = "認証エラーが発生しました。再度ログインしてください。";
+        } else if (response.status === 404) {
+          errorMessage = "会話が見つかりません。ページを更新してやり直してください。";
+        } else {
+          errorMessage = "メッセージの送信中にエラーが発生しました。後でやり直してください。";
+          console.error('Failed to send message:', errorData);
+        }
+      }
+      
+      // Add system error message if needed
+      if (errorMessage) {
+        const systemErrorMessage = {
+          sender: 'teacher' as const,
+          content: errorMessage,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, systemErrorMessage]);
       }
     } catch (error) {
       setIsTeacherTyping(false);
       console.error('Error sending message:', error);
+      
+      // Add a generic error message
+      const systemErrorMessage = {
+        sender: 'teacher' as const,
+        content: "エラーが発生しました。ネットワーク接続を確認して、もう一度お試しください。",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, systemErrorMessage]);
     } finally {
       setIsLoading(false);
     }

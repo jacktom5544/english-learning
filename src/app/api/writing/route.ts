@@ -5,6 +5,8 @@ import User from '@/models/User';
 import Writing from '@/models/Writing';
 import connectDB from '@/lib/db';
 import { generateAIResponse, provideWritingFeedback } from '@/lib/ai';
+import { consumePoints } from '@/lib/serverUtils';
+import { POINT_CONSUMPTION } from '@/lib/pointSystem';
 
 // Use predefined fake responses when API is not available
 const FAKE_TOPIC = '今週末に行った活動について英語で説明してください。';
@@ -156,6 +158,17 @@ export async function GET(req: NextRequest) {
           );
         }
         
+        // Check if user has enough points
+        if (user.points < POINT_CONSUMPTION.WRITING_ESSAY) {
+          return NextResponse.json(
+            { 
+              error: 'ポイントが不足しています',
+              details: `必要なポイント: ${POINT_CONSUMPTION.WRITING_ESSAY}, 現在のポイント: ${user.points}`
+            },
+            { status: 403 }
+          );
+        }
+        
         // Generate a writing topic
         const topic = await generateTopic(
           user.englishLevel || 'intermediate',
@@ -198,8 +211,19 @@ export async function GET(req: NextRequest) {
     }
   } catch (error) {
     console.error('Error in writing GET route:', error);
+    let errorMessage = 'リクエストの処理に失敗しました';
+    let errorDetails = undefined;
+    
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      errorDetails = (error as any).details || undefined;
+    }
+    
     return NextResponse.json(
-      { error: 'リクエストの処理に失敗しました' },
+      { 
+        error: errorMessage,
+        details: errorDetails
+      },
       { status: 500 }
     );
   }
@@ -237,6 +261,19 @@ export async function POST(req: NextRequest) {
       );
     }
     
+    // Check and consume points
+    const updatedUser = await consumePoints(user._id, POINT_CONSUMPTION.WRITING_ESSAY);
+    
+    if (!updatedUser) {
+      return NextResponse.json(
+        { 
+          error: 'ポイントが不足しています',
+          details: `必要なポイント: ${POINT_CONSUMPTION.WRITING_ESSAY}, 現在のポイント: ${user.points}`
+        },
+        { status: 403 }
+      );
+    }
+    
     // Get the teacher from request or from user profile
     const teacherToUse = preferredTeacher || user.preferredTeacher || 'taro';
     console.log('Using teacher for feedback:', teacherToUse);
@@ -269,8 +306,19 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error('Error in writing POST route:', error);
+    let errorMessage = 'リクエストの処理に失敗しました';
+    let errorDetails = undefined;
+    
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      errorDetails = (error as any).details || undefined;
+    }
+    
     return NextResponse.json(
-      { error: 'リクエストの処理に失敗しました' },
+      { 
+        error: errorMessage,
+        details: errorDetails
+      },
       { status: 500 }
     );
   }

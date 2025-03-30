@@ -8,37 +8,9 @@ import {
   hasGrammarErrors, 
   correctGrammar 
 } from '@/lib/conversation-ai';
-
-// MongoDB connection utility
-async function connectToDB() {
-  const MONGODB_URI = process.env.MONGODB_URI!;
-
-  if (!MONGODB_URI) {
-    throw new Error(
-      'Please define the MONGODB_URI environment variable inside .env.local'
-    );
-  }
-
-  // Global is used here to maintain a cached connection across hot reloads
-  let cached = global as any;
-  cached.mongoose = cached.mongoose || { conn: null, promise: null };
-
-  if (cached.mongoose.conn) {
-    return cached.mongoose.conn;
-  }
-
-  if (!cached.mongoose.promise) {
-    const opts = {
-      bufferCommands: false,
-    };
-
-    cached.mongoose.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
-      return mongoose;
-    });
-  }
-  cached.mongoose.conn = await cached.mongoose.promise;
-  return cached.mongoose.conn;
-}
+import { consumePoints } from '@/lib/serverUtils';
+import { POINT_CONSUMPTION } from '@/lib/pointSystem';
+import { connectToDatabase } from '@/lib/db';
 
 // POST /api/conversations/[conversationId]/messages
 export async function POST(
@@ -58,7 +30,7 @@ export async function POST(
       return NextResponse.json({ error: 'Valid message content required' }, { status: 400 });
     }
 
-    await connectToDB();
+    await connectToDatabase();
 
     // Find user by email
     const userEmail = session.user.email as string;
@@ -80,6 +52,13 @@ export async function POST(
 
     if (conversation.userId.toString() !== user._id.toString()) {
       return NextResponse.json({ error: 'Unauthorized access to conversation' }, { status: 403 });
+    }
+
+    // Check and consume points
+    const updatedUser = await consumePoints(user._id, POINT_CONSUMPTION.CONVERSATION_CHAT);
+    
+    if (!updatedUser) {
+      return NextResponse.json({ error: 'Not enough points' }, { status: 403 });
     }
 
     // Add user message

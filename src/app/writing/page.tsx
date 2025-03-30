@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { POINT_CONSUMPTION } from '@/lib/pointSystem';
+import { usePoints } from '@/hooks/usePoints';
 
 interface WritingEntry {
   _id: string;
@@ -16,11 +18,11 @@ interface WritingEntry {
 }
 
 interface UserProfile {
-  name: string;
   englishLevel: string;
   job: string;
   goal: string;
   preferredTeacher: 'hiroshi' | 'reiko' | 'iwao' | 'taro';
+  points: number;
 }
 
 const teacherInfo = {
@@ -52,12 +54,11 @@ const teacherInfo = {
 
 interface TeacherMessageProps {
   teacher: 'hiroshi' | 'reiko' | 'iwao' | 'taro';
-  userName: string;
 }
 
-function TeacherMessage({ teacher, userName }: TeacherMessageProps) {
+function TeacherMessage({ teacher }: TeacherMessageProps) {
   const info = teacherInfo[teacher];
-  const message = info.prefix + info.messageTemplate.replace('{name}', userName);
+  const message = "ライティングの練習をしましょう。トピックを生成すると始められますよ。";
 
   return (
     <div className="flex items-center space-x-4 mb-6 bg-white p-4 rounded-lg shadow">
@@ -82,6 +83,7 @@ function TeacherMessage({ teacher, userName }: TeacherMessageProps) {
 export default function WritingPage() {
   const { data: session } = useSession();
   const router = useRouter();
+  const { points, refreshPoints } = usePoints();
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -112,15 +114,16 @@ export default function WritingPage() {
 
   const fetchUserProfile = async () => {
     try {
+      // Fetch basic user profile
       const response = await fetch(`/api/users/${session?.user?.id}`);
       if (response.ok) {
         const userData = await response.json();
         setUserProfile({
-          name: userData.name || '',
           englishLevel: userData.englishLevel || 'beginner',
           job: userData.job || '',
           goal: userData.goal || '',
           preferredTeacher: userData.preferredTeacher || 'taro',
+          points: points, // Use points from hook instead
         });
         
         // If profile is incomplete, show a message
@@ -137,6 +140,16 @@ export default function WritingPage() {
       setIsLoading(false);
     }
   };
+
+  // Update profile when points change
+  useEffect(() => {
+    if (userProfile && points !== userProfile.points) {
+      setUserProfile({
+        ...userProfile,
+        points: points
+      });
+    }
+  }, [points, userProfile]);
 
   const fetchWritingHistory = async () => {
     try {
@@ -158,6 +171,12 @@ export default function WritingPage() {
   };
 
   const generateTopic = async () => {
+    // Check if the user has enough points
+    if (points < POINT_CONSUMPTION.WRITING_ESSAY) {
+      setMessage(`ポイントが不足しています。必要なポイント: ${POINT_CONSUMPTION.WRITING_ESSAY}, 現在のポイント: ${points}`);
+      return;
+    }
+
     setIsGeneratingTopic(true);
     setMessage('');
 
@@ -173,8 +192,19 @@ export default function WritingPage() {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         console.error('Failed to generate topic:', errorData);
+        
+        // Handle insufficient points error specifically
+        if (response.status === 403 && errorData.error === 'ポイントが不足しています') {
+          setMessage(`ポイントが不足しています。${errorData.details || ''}`);
+          refreshPoints(); // Refresh points
+          return;
+        }
+        
         throw new Error(errorData?.error || errorData?.details || 'トピックの生成に失敗しました');
       }
+      
+      // Update points after successful generation
+      refreshPoints();
       
       const data = await response.json();
       
@@ -211,13 +241,14 @@ export default function WritingPage() {
   };
 
   const submitWriting = async () => {
-    if (!userContent.trim()) {
-      setMessage('文章を入力してください。');
+    if (!isTopicGenerated || !topic || !userContent) {
+      setMessage('トピックと内容を入力してください。');
       return;
     }
 
-    if (wordCount < 5) {
-      setMessage('少なくとも5単語以上書いてください。');
+    // Check if the user has enough points
+    if (points < POINT_CONSUMPTION.WRITING_ESSAY) {
+      setMessage(`ポイントが不足しています。必要なポイント: ${POINT_CONSUMPTION.WRITING_ESSAY}, 現在のポイント: ${points}`);
       return;
     }
 
@@ -242,9 +273,27 @@ export default function WritingPage() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Failed to submit writing:', errorData);
-        throw new Error(errorData?.error || errorData?.details || 'フィードバックの生成に失敗しました');
+        let errorMessage = 'フィードバックの生成に失敗しました';
+        
+        try {
+          const errorData = await response.json();
+          console.error('Failed to submit writing:', errorData);
+          
+          // Handle insufficient points error
+          if (response.status === 403 && errorData.error === 'ポイントが不足しています') {
+            setMessage('ポイントが不足しています。プロフィールページでポイント状況を確認してください。');
+            if (errorData.details) {
+              setMessage(prev => `${prev}\n${errorData.details}`);
+            }
+            return;
+          }
+          
+          errorMessage = errorData?.error || errorData?.details || errorMessage;
+        } catch (parseError) {
+          console.error('Error parsing error response:', parseError);
+        }
+        
+        throw new Error(errorMessage);
       }
       
       const data = await response.json();
@@ -267,6 +316,9 @@ export default function WritingPage() {
 
       // Refresh writing history
       fetchWritingHistory();
+
+      // Update points after successful submission
+      refreshPoints();
     } catch (error: any) {
       console.error('Failed to submit writing:', error);
       setMessage(`フィードバックの生成に失敗しました。${error.message || 'APIエラーが発生しました。しばらくしてからもう一度お試しください。'}`);
@@ -310,7 +362,6 @@ export default function WritingPage() {
         {userProfile && (
           <TeacherMessage
             teacher={userProfile.preferredTeacher}
-            userName={userProfile.name}
           />
         )}
         
@@ -421,14 +472,21 @@ export default function WritingPage() {
     <div className="container mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">ライティング練習</h1>
-        {previousEntries.length > 0 && (
-          <button
-            onClick={() => setShowHistory(!showHistory)}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            {showHistory ? '履歴を隠す' : '過去のライティングを表示'}
-          </button>
-        )}
+        <div className="flex items-center gap-4">
+          {userProfile && (
+            <div className="text-sm px-3 py-1 bg-blue-50 border border-blue-200 text-blue-600 rounded-full">
+              ポイント: <span className="font-semibold">{points}</span>
+            </div>
+          )}
+          {previousEntries.length > 0 && (
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              {showHistory ? '履歴を隠す' : '過去のライティングを表示'}
+            </button>
+          )}
+        </div>
       </div>
 
       {message && (
@@ -444,15 +502,36 @@ export default function WritingPage() {
             {userProfile && (
               <TeacherMessage
                 teacher={userProfile.preferredTeacher}
-                userName={userProfile.name}
               />
+            )}
+            <div className="text-sm text-gray-600 mb-4">
+              現在のポイント: <span className="font-semibold">{points}</span>
+              <button 
+                onClick={refreshPoints} 
+                className="ml-2 text-blue-500 hover:text-blue-700"
+                title="ポイントを更新"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+            </div>
+            {points < POINT_CONSUMPTION.WRITING_ESSAY && (
+              <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded mb-4">
+                ポイントが不足しています。必要なポイント: {POINT_CONSUMPTION.WRITING_ESSAY}, 現在のポイント: {points}
+              </div>
             )}
             <button
               onClick={generateTopic}
-              disabled={isGeneratingTopic}
-              className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+              disabled={isGeneratingTopic || points < POINT_CONSUMPTION.WRITING_ESSAY}
+              className={`px-4 py-2 rounded ${
+                isGeneratingTopic || points < POINT_CONSUMPTION.WRITING_ESSAY
+                  ? 'bg-gray-400 cursor-not-allowed'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+              } transition-colors`}
             >
-              {isGeneratingTopic ? 'トピックを生成中...' : 'ライティングを始める'}
+              {isGeneratingTopic ? 'トピック生成中...' : 
+               points < POINT_CONSUMPTION.WRITING_ESSAY ? 'ポイント不足' : 'トピックを生成する'}
             </button>
             {isGeneratingTopic && (
               <div className="mt-8 flex flex-col items-center">

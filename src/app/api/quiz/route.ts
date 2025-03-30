@@ -6,6 +6,8 @@ import Quiz from '@/models/Quiz';
 import Vocabulary from '@/models/Vocabulary';
 import connectDB from '@/lib/db';
 import { generateEnglishQuiz } from '@/lib/ai';
+import { consumePoints } from '@/lib/serverUtils';
+import { POINT_CONSUMPTION } from '@/lib/pointSystem';
 
 // Generate a quiz for the user
 export async function POST(req: NextRequest) {
@@ -35,6 +37,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: 'ユーザーが見つかりません' },
         { status: 404 }
+      );
+    }
+
+    // Check and consume points
+    const updatedUser = await consumePoints(user._id, POINT_CONSUMPTION.QUIZ_START);
+    
+    if (!updatedUser) {
+      return NextResponse.json(
+        { error: 'ポイントが不足しています' },
+        { status: 403 }
       );
     }
 

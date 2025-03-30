@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import { POINT_CONSUMPTION } from '@/lib/pointSystem';
+import { usePoints } from '@/hooks/usePoints';
 
 interface QuizQuestion {
   question: string;
@@ -23,14 +25,15 @@ interface QuizResult {
 }
 
 interface UserProfile {
-  englishLevel: string;
-  job: string;
-  goal: string;
+  id: string;
+  username: string;
+  points: number;
 }
 
 export default function QuizPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const router = useRouter();
+  const { points, loading: pointsLoading, refreshPoints } = usePoints();
   const [isLoading, setIsLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
@@ -43,49 +46,58 @@ export default function QuizPage() {
   const [message, setMessage] = useState('');
   const [quizId, setQuizId] = useState<string | null>(null);
   const [quizResults, setQuizResults] = useState<QuizResult[]>([]);
-  const [markedVocabularies, setMarkedVocabularies] = useState<Record<number, boolean | null>>({});
+  const [markedVocabularies, setMarkedVocabularies] = useState<Record<number, boolean | undefined | null>>({});
 
+  // Fetch user profile data
+  const fetchUserProfile = useCallback(async () => {
+    if (status !== 'authenticated') return;
+    
+    try {
+      // Get basic profile info
+      const response = await fetch('/api/users/profile');
+      if (!response.ok) return;
+      
+      const profileData = await response.json();
+      console.log('User profile data:', profileData);
+      
+      setUserProfile({
+        id: profileData.id || session?.user?.id || '',
+        username: profileData.username || profileData.email || session?.user?.email || '',
+        points: points // Use points from the usePoints hook
+      });
+    } catch (error) {
+      console.error('Failed to fetch user profile:', error);
+    }
+  }, [status, session, points]);
+
+  // Handle initial loading
   useEffect(() => {
-    if (session?.user?.id) {
+    if (status === 'authenticated') {
       fetchUserProfile();
-    } else {
+      setIsLoading(false);
+    } else if (status === 'unauthenticated') {
       router.push('/login');
     }
-  }, [session, router]);
-
-  const fetchUserProfile = async () => {
-    try {
-      const response = await fetch(`/api/users/${session?.user?.id}`);
-      if (response.ok) {
-        const userData = await response.json();
-        setUserProfile({
-          englishLevel: userData.englishLevel || 'beginner',
-          job: userData.job || '',
-          goal: userData.goal || '',
-        });
-        setIsLoading(false);
-
-        // If profile is incomplete, show a message
-        if (!userData.job || !userData.goal) {
-          setMessage('より適切なクイズを生成するために、プロフィールで職業と目標を設定してください。');
-        }
-      } else {
-        throw new Error('Failed to fetch user profile');
-      }
-    } catch (error) {
-      console.error('Failed to fetch profile:', error);
-      setMessage('プロフィールの取得に失敗しました。しばらくしてからもう一度お試しください。');
-      setIsLoading(false);
+  }, [fetchUserProfile, status, router]);
+  
+  // Update profile when points change
+  useEffect(() => {
+    if (userProfile && points !== userProfile.points) {
+      setUserProfile({
+        ...userProfile,
+        points: points
+      });
     }
-  };
+  }, [points, userProfile]);
 
   const generateQuiz = async () => {
-    console.log('generateQuiz called - starting quiz generation');
+    if (isGenerating) return;
+    
     setIsGenerating(true);
     setMessage('');
-    setQuizResults([]);
-    setMarkedVocabularies({});
-
+    console.log('Starting quiz generation...');
+    console.log('Current points:', userProfile?.points);
+    
     try {
       console.log('Sending quiz generation request...');
       const response = await fetch('/api/quiz', {
@@ -94,22 +106,39 @@ export default function QuizPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          englishLevel: userProfile?.englishLevel,
-          job: userProfile?.job,
-          goal: userProfile?.goal,
           count: 10, // Request 10 quiz questions
         }),
       });
 
       console.log('Quiz API response status:', response.status);
       
+      const responseText = await response.text();
+      console.log('Response text:', responseText);
+      
+      let errorData;
+      try {
+        errorData = JSON.parse(responseText);
+      } catch (e) {
+        errorData = { error: responseText || 'Unknown error' };
+      }
+      
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
         console.error('Quiz generation failed:', errorData);
+        
+        // Handle insufficient points error
+        if (response.status === 403) {
+          setMessage(`ポイントが不足しています。${errorData.currentPoints !== undefined ? `現在のポイント: ${errorData.currentPoints}, 必要なポイント: ${errorData.requiredPoints || 1}` : ''}` );
+          // Refresh points after an error
+          refreshPoints();
+          setIsGenerating(false);
+          return;
+        }
+        
         throw new Error(errorData?.error || 'クイズの生成に失敗しました');
       }
 
-      const quizData = await response.json();
+      // Parse the response as JSON
+      const quizData = errorData;
       console.log('Quiz data received:', quizData);
       
       // Extract quiz ID from the response
@@ -144,6 +173,8 @@ export default function QuizPage() {
     } catch (error: any) {
       console.error('Failed to generate quiz:', error);
       setMessage(`クイズの生成に失敗しました。${error.message || 'しばらくしてからもう一度お試しください。'}`);
+      // Refresh points after an error
+      refreshPoints();
     } finally {
       setIsGenerating(false);
     }
@@ -283,13 +314,48 @@ export default function QuizPage() {
     if (questions.length === 0) {
       return (
         <div className="text-center py-10">
+          <h1 className="text-3xl font-bold mb-6">英語クイズチャレンジ</h1>
+          <p className="mb-8 text-gray-700">
+            日常会話や基本的な表現から、文法、語彙などをカバーする多彩なクイズに挑戦して、
+            <br />
+            英語力を楽しく向上させましょう。
+          </p>
+          
+          <div className="mb-4">
+            <div className="inline-flex items-center px-3 py-1 bg-blue-50 border border-blue-200 text-blue-600 rounded-full mb-4">
+              <span>現在のポイント: <span className="font-semibold">{points}</span></span>
+              <button 
+                onClick={refreshPoints}
+                className="ml-2 text-xs text-blue-600 hover:text-blue-800"
+                title="ポイントを更新"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          
+          {points < POINT_CONSUMPTION.QUIZ_START && (
+            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded mb-6 mx-auto max-w-md">
+              ポイントが不足しています。必要なポイント: {POINT_CONSUMPTION.QUIZ_START}, 現在のポイント: {points}
+            </div>
+          )}
+          
           <button
             onClick={generateQuiz}
-            disabled={isGenerating}
-            className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+            disabled={isGenerating || points < POINT_CONSUMPTION.QUIZ_START}
+            className={`px-8 py-3 rounded-lg font-medium text-white ${
+              isGenerating || points < POINT_CONSUMPTION.QUIZ_START
+                ? 'bg-gray-400 cursor-not-allowed'
+                : 'bg-blue-600 hover:bg-blue-700'
+            } transition-colors`}
           >
-            {isGenerating ? 'クイズを生成中...' : 'クイズを始める (10問)'}
+            {isGenerating ? 'クイズを作成中...' : 
+             (points < POINT_CONSUMPTION.QUIZ_START) ? 
+             'ポイントが不足しています' : 'クイズを始める'}
           </button>
+          
           {isGenerating && (
             <div className="mt-8 flex flex-col items-center">
               <div className="animate-pulse flex space-x-4 mb-4">
@@ -301,6 +367,7 @@ export default function QuizPage() {
               <p className="text-sm text-gray-500 mt-1">少々お待ちください</p>
             </div>
           )}
+          
           {message && !isGenerating && (
             <div className="mt-4 text-sm text-amber-600">{message}</div>
           )}
@@ -362,11 +429,11 @@ export default function QuizPage() {
                         </>
                       ) : (
                         <span className={`inline-flex items-center px-3 py-2 rounded-full text-xs font-medium ${
-                          markedVocabularies[index] 
+                          markedVocabularies[index] === true
                             ? 'bg-green-100 text-green-800' 
                             : 'bg-amber-100 text-amber-800'
                         }`}>
-                          {markedVocabularies[index] ? '覚えた' : 'すぐに忘れそう'}
+                          {markedVocabularies[index] === true ? '覚えた' : 'すぐに忘れそう'}
                         </span>
                       )}
                     </div>
@@ -450,7 +517,7 @@ export default function QuizPage() {
     );
   };
 
-  if (isLoading) {
+  if (status === 'loading') {
     return <div className="text-center py-10">読み込み中...</div>;
   }
 

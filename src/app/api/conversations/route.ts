@@ -4,37 +4,9 @@ import mongoose from 'mongoose';
 import Conversation from '@/models/Conversation';
 import User from '@/models/User';
 import { generateTeacherGreeting, generateConversationTitle } from '@/lib/conversation-ai';
-
-// MongoDB connection utility
-async function connectToDB() {
-  const MONGODB_URI = process.env.MONGODB_URI!;
-
-  if (!MONGODB_URI) {
-    throw new Error(
-      'Please define the MONGODB_URI environment variable inside .env.local'
-    );
-  }
-
-  // Global is used here to maintain a cached connection across hot reloads
-  let cached = global as any;
-  cached.mongoose = cached.mongoose || { conn: null, promise: null };
-
-  if (cached.mongoose.conn) {
-    return cached.mongoose.conn;
-  }
-
-  if (!cached.mongoose.promise) {
-    const opts = {
-      bufferCommands: false,
-    };
-
-    cached.mongoose.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
-      return mongoose;
-    });
-  }
-  cached.mongoose.conn = await cached.mongoose.promise;
-  return cached.mongoose.conn;
-}
+import { consumePoints } from '@/lib/serverUtils';
+import { POINT_CONSUMPTION } from '@/lib/pointSystem';
+import { connectToDatabase } from '@/lib/db';
 
 // GET /api/conversations - Get all conversations for the current user
 export async function GET(req: NextRequest) {
@@ -45,7 +17,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    await connectToDB();
+    await connectToDatabase();
 
     // Find user by email
     const userEmail = session.user.email as string;
@@ -82,7 +54,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Valid teacher selection required' }, { status: 400 });
     }
 
-    await connectToDB();
+    await connectToDatabase();
 
     // Find user by email
     const userEmail = session.user.email as string;
@@ -90,6 +62,17 @@ export async function POST(req: NextRequest) {
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // Check and consume points for starting a new conversation
+    const updatedUser = await consumePoints(user._id, POINT_CONSUMPTION.CONVERSATION_CHAT);
+    
+    if (!updatedUser) {
+      return NextResponse.json({ 
+        error: 'Not enough points', 
+        currentPoints: user.points || 0,
+        requiredPoints: POINT_CONSUMPTION.CONVERSATION_CHAT 
+      }, { status: 403 });
     }
 
     // Generate initial greeting using AI

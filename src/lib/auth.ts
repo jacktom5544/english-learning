@@ -43,6 +43,7 @@ export const authOptions: NextAuthOptions = {
             name: user.name,
             image: user.image,
             role: user.role,
+            points: user.points
           };
         } catch (error) {
           safeError('Error in authorize function', error);
@@ -55,18 +56,53 @@ export const authOptions: NextAuthOptions = {
     strategy: 'jwt',
   },
   callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
+    async jwt({ token, user, account }) {
+      // Initial sign in
+      if (account && user) {
+        console.log('JWT callback - Initial sign in', { user });
+        
         token.id = user.id;
         token.role = user.role;
+        token.points = user.points;
+        
+        // If points are missing, try to fetch them from the database
+        if (token.points === undefined) {
+          try {
+            await connectToDatabase();
+            const dbUser = await User.findById(user.id);
+            if (dbUser) {
+              token.points = dbUser.points;
+              console.log('Points fetched from database for token', { points: dbUser.points });
+            }
+          } catch (error) {
+            console.error('Error fetching user points for token', error);
+          }
+        }
       }
+      
       return token;
     },
     async session({ session, token }) {
       if (token && session.user) {
         session.user.id = token.id as string;
         session.user.role = token.role as string;
+        session.user.points = token.points as number;
+        
+        // If points are missing, try to fetch them from the database
+        if (session.user.points === undefined) {
+          try {
+            await connectToDatabase();
+            const dbUser = await User.findById(session.user.id);
+            if (dbUser) {
+              session.user.points = dbUser.points;
+              console.log('Points fetched from database for session', { points: dbUser.points });
+            }
+          } catch (error) {
+            console.error('Error fetching user points for session', error);
+          }
+        }
       }
+      
       return session;
     },
   },

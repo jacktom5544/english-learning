@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { IConversation } from '@/models/Conversation';
 import { TeacherType } from '@/lib/teachers';
+import { POINT_CONSUMPTION } from '@/lib/pointSystem';
+import { usePoints } from '@/hooks/usePoints';
 
 // Dynamic imports without type annotations to avoid TypeScript conflicts
 // @ts-ignore
@@ -18,6 +20,7 @@ const TeacherSelection = dynamic(() => import('./components/TeacherSelection'), 
 export default function ConversationPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const { points, refreshPoints } = usePoints();
   const [conversations, setConversations] = useState<IConversation[]>([]);
   const [activeConversation, setActiveConversation] = useState<IConversation | null>(null);
   const [isNewConversation, setIsNewConversation] = useState(false);
@@ -102,6 +105,7 @@ export default function ConversationPage() {
         setConversations([newConversation, ...conversations]);
         setActiveConversation(newConversation);
         setIsNewConversation(false);
+        refreshPoints();
         return newConversation;
       } else {
         throw new Error('Failed to create conversation');
@@ -131,12 +135,18 @@ export default function ConversationPage() {
       <div className="w-full md:w-1/3 bg-white border-r border-gray-200 p-4 overflow-y-auto">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-xl font-bold">Conversations</h1>
-          <button
-            onClick={handleStartNewConversation}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-          >
-            New Chat
-          </button>
+          <div className="flex items-center gap-3">
+            <div className="text-xs px-2 py-1 bg-blue-50 border border-blue-200 text-blue-600 rounded-full">
+              ポイント: <span className="font-semibold">{points}</span>
+            </div>
+            <button
+              onClick={handleStartNewConversation}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+              disabled={points < POINT_CONSUMPTION.CONVERSATION_CHAT}
+            >
+              New Chat
+            </button>
+          </div>
         </div>
         {/* @ts-ignore */}
         <ConversationList
@@ -150,7 +160,11 @@ export default function ConversationPage() {
       <div className="flex-1 flex flex-col p-4 h-full overflow-hidden">
         {isNewConversation ? (
           /* @ts-ignore */
-          <TeacherSelection onSelectTeacher={handleTeacherSelect} />
+          <TeacherSelection 
+            onSelectTeacher={handleTeacherSelect} 
+            userPoints={points}
+            requiredPoints={POINT_CONSUMPTION.CONVERSATION_CHAT}
+          />
         ) : activeConversation && activeConversation._id ? (
           /* @ts-ignore */
           <ChatInterface 
@@ -161,10 +175,16 @@ export default function ConversationPage() {
         ) : (
           <div className="flex flex-col items-center justify-center h-full">
             <h2 className="text-xl font-semibold mb-4">Start a new conversation</h2>
-            <p className="text-gray-600 mb-8">Chat with our AI teachers to practice your English skills</p>
+            <p className="text-gray-600 mb-4">Chat with our AI teachers to practice your English skills</p>
+            {points < POINT_CONSUMPTION.CONVERSATION_CHAT && (
+              <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded mb-4">
+                ポイントが不足しています。必要なポイント: {POINT_CONSUMPTION.CONVERSATION_CHAT}, 現在のポイント: {points}
+              </div>
+            )}
             <button
               onClick={handleStartNewConversation}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-lg"
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-lg disabled:opacity-50"
+              disabled={points < POINT_CONSUMPTION.CONVERSATION_CHAT}
             >
               Start New Conversation
             </button>

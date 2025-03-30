@@ -107,6 +107,9 @@ export async function PUT(
         image: user.image ? 'present' : null,
         startReason: user.startReason,
         struggles: user.struggles,
+        points: user.points,
+        pointsUsedThisMonth: user.pointsUsedThisMonth,
+        pointsLastUpdated: user.pointsLastUpdated
       }
     });
   } catch (error) {

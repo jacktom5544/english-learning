@@ -1,5 +1,6 @@
 import mongoose, { Schema, model, models } from 'mongoose';
 import bcrypt from 'bcrypt';
+import { INITIAL_POINTS } from '@/lib/pointSystem';
 
 export interface IUser extends mongoose.Document {
   email: string;
@@ -13,6 +14,9 @@ export interface IUser extends mongoose.Document {
   struggles?: string;
   preferredTeacher?: 'hiroshi' | 'reiko' | 'iwao' | 'taro';
   role: 'free' | 'paid' | 'admin';
+  points: number;
+  pointsLastUpdated: Date;
+  pointsUsedThisMonth: number;
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;
@@ -71,6 +75,23 @@ const UserSchema = new Schema<IUser>(
       type: String,
       enum: ['free', 'paid', 'admin'],
       default: 'free',
+    },
+    points: {
+      type: Number,
+      default: INITIAL_POINTS,
+      required: true,
+      min: 0
+    },
+    pointsLastUpdated: {
+      type: Date,
+      default: Date.now,
+      required: true
+    },
+    pointsUsedThisMonth: {
+      type: Number,
+      default: 0,
+      required: true,
+      min: 0
     },
   },
   {

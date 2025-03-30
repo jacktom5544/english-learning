@@ -52,6 +52,7 @@ export default function ProfilePage() {
   const [isUploading, setIsUploading] = useState(false);
   const [message, setMessage] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [userPoints, setUserPoints] = useState({ points: 0, pointsUsedThisMonth: 0, pointsLastUpdated: new Date() });
   const [profile, setProfile] = useState({
     name: '',
     englishLevel: 'beginner',
@@ -66,6 +67,7 @@ export default function ProfilePage() {
   useEffect(() => {
     if (session?.user?.id) {
       fetchUserProfile();
+      fetchUserPoints();
     }
   }, [session?.user?.id]);
 
@@ -89,6 +91,22 @@ export default function ProfilePage() {
       console.error('Failed to fetch profile:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchUserPoints = async () => {
+    try {
+      const response = await fetch('/api/users/points');
+      if (response.ok) {
+        const data = await response.json();
+        setUserPoints({
+          points: data.points,
+          pointsUsedThisMonth: data.pointsUsedThisMonth,
+          pointsLastUpdated: new Date(data.pointsLastUpdated)
+        });
+      }
+    } catch (error) {
+      console.error('Failed to fetch user points:', error);
     }
   };
 
@@ -196,6 +214,24 @@ export default function ProfilePage() {
           {message}
         </div>
       )}
+
+      <div className="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4">
+        <h2 className="text-xl font-semibold mb-4">ポイント情報</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <p className="text-gray-700 font-medium">今月の残りのポイント</p>
+            <p className="text-2xl font-bold text-blue-600">{userPoints.points}</p>
+          </div>
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <p className="text-gray-700 font-medium">今月の消費ポイント</p>
+            <p className="text-2xl font-bold text-green-600">{userPoints.pointsUsedThisMonth}</p>
+          </div>
+        </div>
+        <div className="mt-4 text-sm text-gray-500">
+          <p>次回のポイント更新: {new Date(userPoints.pointsLastUpdated.getTime() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('ja-JP')}</p>
+          <p className="mt-1">※毎月5000ポイントを追加（最大20000ポイントまで）</p>
+        </div>
+      </div>
 
       <form onSubmit={handleSubmit} className="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4">
         <div className="space-y-6">
