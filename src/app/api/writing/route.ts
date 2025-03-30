@@ -147,6 +147,9 @@ export async function GET(req: NextRequest) {
     
     if (action === 'topic') {
       try {
+        // Get skipPointsConsumption from query param instead of body
+        const skipPointsConsumption = url.searchParams.get('skipPointsConsumption') === 'true';
+
         // Get user info to personalize topic
         await connectDB();
         const user = await User.findById(session.user.id);
@@ -158,8 +161,8 @@ export async function GET(req: NextRequest) {
           );
         }
         
-        // Check if user has enough points
-        if (user.points < POINT_CONSUMPTION.WRITING_ESSAY) {
+        // Check if user has enough points (if not skipping points consumption)
+        if (!skipPointsConsumption && user.points < POINT_CONSUMPTION.WRITING_ESSAY) {
           return NextResponse.json(
             { 
               error: 'ポイントが不足しています',
@@ -241,7 +244,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { topic, content, preferredTeacher } = await req.json();
+    const { topic, content, preferredTeacher, skipPointsConsumption } = await req.json();
     
     if (!topic || !content) {
       return NextResponse.json(
@@ -261,17 +264,20 @@ export async function POST(req: NextRequest) {
       );
     }
     
-    // Check and consume points
-    const updatedUser = await consumePoints(user._id, POINT_CONSUMPTION.WRITING_ESSAY);
-    
-    if (!updatedUser) {
-      return NextResponse.json(
-        { 
-          error: 'ポイントが不足しています',
-          details: `必要なポイント: ${POINT_CONSUMPTION.WRITING_ESSAY}, 現在のポイント: ${user.points}`
-        },
-        { status: 403 }
-      );
+    // Check and consume points only if not skipped
+    let updatedUser = user;
+    if (!skipPointsConsumption) {
+      updatedUser = await consumePoints(user._id, POINT_CONSUMPTION.WRITING_ESSAY);
+      
+      if (!updatedUser) {
+        return NextResponse.json(
+          { 
+            error: 'ポイントが不足しています',
+            details: `必要なポイント: ${POINT_CONSUMPTION.WRITING_ESSAY}, 現在のポイント: ${user.points}`
+          },
+          { status: 403 }
+        );
+      }
     }
     
     // Get the teacher from request or from user profile

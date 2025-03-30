@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { POINT_CONSUMPTION } from '@/lib/pointSystem';
-import { usePoints } from '@/hooks/usePoints';
+import { useUserPoints } from '@/components/providers/UserPointsProvider';
 
 interface WritingEntry {
   _id: string;
@@ -22,7 +22,7 @@ interface UserProfile {
   job: string;
   goal: string;
   preferredTeacher: 'hiroshi' | 'reiko' | 'iwao' | 'taro';
-  points: number;
+  points: number | null;
 }
 
 const teacherInfo = {
@@ -83,7 +83,7 @@ function TeacherMessage({ teacher }: TeacherMessageProps) {
 export default function WritingPage() {
   const { data: session } = useSession();
   const router = useRouter();
-  const { points, refreshPoints } = usePoints();
+  const { points, pointsUsedThisMonth, isLoading: pointsLoading, consumePoints, refreshPoints } = useUserPoints();
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -123,7 +123,7 @@ export default function WritingPage() {
           job: userData.job || '',
           goal: userData.goal || '',
           preferredTeacher: userData.preferredTeacher || 'taro',
-          points: points, // Use points from hook instead
+          points: points, // Use points from UserPointsProvider
         });
         
         // If profile is incomplete, show a message
@@ -170,10 +170,35 @@ export default function WritingPage() {
     }
   };
 
+  // Function to render remaining points display safely
+  const renderPointsDisplay = () => {
+    if (pointsLoading || points === null) {
+      return <span className="font-semibold">...</span>;
+    }
+    return (
+      <span className="font-semibold">{points}</span>
+    );
+  };
+
+  // Function to check if user has enough points
+  const hasEnoughPoints = () => {
+    if (pointsLoading || points === null) return false;
+    return points >= POINT_CONSUMPTION.WRITING_ESSAY;
+  };
+
   const generateTopic = async () => {
+    // Check if points are still loading or null
+    if (pointsLoading || points === null) {
+      setMessage('ポイント情報を読み込み中です。しばらくお待ちください。');
+      return;
+    }
+    
+    // At this point TypeScript knows points is not null
     // Check if the user has enough points
-    if (points < POINT_CONSUMPTION.WRITING_ESSAY) {
-      setMessage(`ポイントが不足しています。必要なポイント: ${POINT_CONSUMPTION.WRITING_ESSAY}, 現在のポイント: ${points}`);
+    if (!hasEnoughPoints()) {
+      // We can safely use points here since we've checked it's not null above
+      const currentPoints = points; // TypeScript knows this is a number now
+      setMessage(`ポイントが不足しています。必要なポイント: ${POINT_CONSUMPTION.WRITING_ESSAY}, 現在のポイント: ${currentPoints}`);
       return;
     }
 
@@ -181,8 +206,19 @@ export default function WritingPage() {
     setMessage('');
 
     try {
-      // Generate a new topic based on user's profile
-      const response = await fetch(`/api/writing?action=topic`, {
+      // Consume points client-side first
+      const pointsConsumed = await consumePoints(POINT_CONSUMPTION.WRITING_ESSAY);
+      
+      if (!pointsConsumed) {
+        // Get current points which could be null at this point
+        const currentPoints = points ?? 0;
+        setMessage(`ポイントが不足しています。必要なポイント: ${POINT_CONSUMPTION.WRITING_ESSAY}, 現在のポイント: ${currentPoints}`);
+        setIsGeneratingTopic(false);
+        return;
+      }
+      
+      // Generate a new topic based on user's profile - use query params instead of body
+      const response = await fetch(`/api/writing?action=topic&skipPointsConsumption=true`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -256,10 +292,6 @@ export default function WritingPage() {
     setMessage('');
 
     try {
-      // Submit the writing for feedback
-      const preferredTeacher = userProfile?.preferredTeacher || 'taro';
-      console.log('Submitting writing with teacher:', preferredTeacher);
-      
       const response = await fetch('/api/writing', {
         method: 'POST',
         headers: {
@@ -268,7 +300,7 @@ export default function WritingPage() {
         body: JSON.stringify({
           topic,
           content: userContent,
-          preferredTeacher,
+          skipPointsConsumption: true // Points already consumed at topic generation
         }),
       });
 
@@ -475,7 +507,7 @@ export default function WritingPage() {
         <div className="flex items-center gap-4">
           {userProfile && (
             <div className="text-sm px-3 py-1 bg-blue-50 border border-blue-200 text-blue-600 rounded-full">
-              ポイント: <span className="font-semibold">{points}</span>
+              ポイント: {renderPointsDisplay()}
             </div>
           )}
           {previousEntries.length > 0 && (
@@ -505,7 +537,7 @@ export default function WritingPage() {
               />
             )}
             <div className="text-sm text-gray-600 mb-4">
-              現在のポイント: <span className="font-semibold">{points}</span>
+              現在のポイント: {renderPointsDisplay()}
               <button 
                 onClick={refreshPoints} 
                 className="ml-2 text-blue-500 hover:text-blue-700"
