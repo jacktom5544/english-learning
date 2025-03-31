@@ -1,16 +1,33 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 
 export default function SubscribePage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   
-  if (!session || !session.user) {
-    router.push('/login');
+  // Use useEffect to handle redirects based on session status
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/login');
+    }
+  }, [status, router]);
+  
+  // Show loading state while checking authentication
+  if (status === 'loading') {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-8 text-center">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto"></div>
+        <p className="mt-4 text-gray-600">ログイン状態を確認中...</p>
+      </div>
+    );
+  }
+  
+  // Return null during initial load or if not authenticated
+  if (status !== 'authenticated' || !session?.user) {
     return null;
   }
   
