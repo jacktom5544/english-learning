@@ -4,7 +4,7 @@ frontend:
     preBuild:
       commands:
         - npm install
-        - npm install autoprefixer postcss tailwindcss --save
+        - npm install autoprefixer postcss @tailwindcss/postcss tailwindcss --save
         # Explicitly create a symbolic link to help with module resolution
         - mkdir -p node_modules/@
         - ln -sf $(pwd)/src node_modules/@/

@@ -13,6 +13,7 @@
   "dependencies": {
     "@shadcn/ui": "^0.0.4",
     "@stripe/stripe-js": "^6.1.0",
+    "@tailwindcss/postcss": "^4.0.17",
     "autoprefixer": "^10.4.21",
     "axios": "^1.8.4",
     "bcrypt": "^5.1.1",
