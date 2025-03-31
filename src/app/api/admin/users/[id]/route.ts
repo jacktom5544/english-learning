@@ -6,7 +6,7 @@ import User from '@/models/User';
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
   try {
     // Get the user's session
@@ -36,7 +36,7 @@ export async function PATCH(
     
     // Update the user
     const updatedUser = await User.findByIdAndUpdate(
-      params.id,
+      context.params.id,
       { 
         points,
         pointsLastUpdated: new Date()
