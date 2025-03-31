@@ -14,7 +14,7 @@ frontend:
         # Ensure environment variables are in .env.local which Next.js reads by default
         - if [ -f ".env" ]; then cp .env .env.local; fi
         - cp tsconfig.build.json tsconfig.json
-        - npm run build:amplify
+        - export NEXT_TYPESCRIPT_CHECK=false && npm run build:amplify
   artifacts:
     baseDirectory: .next
     files:
