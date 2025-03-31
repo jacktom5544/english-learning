@@ -100,22 +100,29 @@ export async function generateTeacherGreeting(teacher: TeacherType, user: IUser)
   `;
   
   try {
-    // Use Deepseek API to generate response
+    // Create a timeout promise
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('AI response timeout')), 8000);
+    });
+    
+    // Use Deepseek API to generate response with timeout
     const messages: AIMessage[] = [
       { role: 'user', content: prompt }
     ];
     
-    const response = await generateAIResponse(messages, {
+    // Race between the API call and timeout
+    const responsePromise = generateAIResponse(messages, {
       maxTokens: 250,
       temperature: 0.7,
       systemPrompt: TEACHER_PROFILES[teacher].systemPrompt
     });
     
+    const response = await Promise.race([responsePromise, timeoutPromise]);
     return response;
   } catch (error) {
     console.error('Error generating teacher greeting:', error);
     
-    // Fallback to hardcoded responses if API fails
+    // Return fallback greeting
     if (teacher === 'michael') {
       return `Hello ${userName}! I'm Michael, your English teacher. I'm from New York and I used to work in the automobile industry before becoming a teacher. I noticed from your profile that your job is "${userJob}" and your English learning goal is "${userGoal}". ${startReason !== 'not specified' ? `It's interesting to hear that you started learning English because "${startReason}".` : ''} ${struggles !== 'not specified' ? `I understand you've been struggling with "${struggles}" - don't worry, we'll work on that together.` : ''} How are you doing today? Is there anything specific you'd like to practice?`;
     } else {

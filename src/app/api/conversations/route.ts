@@ -75,18 +75,49 @@ export async function POST(req: NextRequest) {
       }, { status: 403 });
     }
 
-    // Generate initial greeting using AI
-    const greeting = await generateTeacherGreeting(teacher, user);
+    // Create a timeout for the entire AI generation process
+    const AI_TIMEOUT = 8000; // 8 seconds
     
-    // Create initial message with AI-generated greeting
+    // Generate initial greeting with timeout handling
+    let greeting: string;
+    try {
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('AI timeout')), AI_TIMEOUT);
+      });
+      
+      const greetingPromise = generateTeacherGreeting(teacher, user);
+      const result = await Promise.race([greetingPromise, timeoutPromise]);
+      greeting = result as string;
+    } catch (error) {
+      console.error('Error or timeout generating greeting:', error);
+      // Fallback greeting
+      greeting = teacher === 'michael'
+        ? `Hello ${user.name}! I'm Michael, your English teacher from New York. How are you doing today? Is there anything specific you'd like to practice?`
+        : `Hi ${user.name}! I'm Emily from Los Angeles! I'm super excited to be your English teacher! How's your day going? Is there something specific you want to talk about today?`;
+    }
+    
+    // Create initial message with greeting (fallback or generated)
     const initialMessage = {
       sender: 'teacher' as const,
       content: greeting,
       timestamp: new Date(),
     };
 
-    // Generate title for the conversation using AI
-    const title = await generateConversationTitle(teacher, initialMessage.content);
+    // Generate title with timeout handling
+    let title: string;
+    try {
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('AI timeout')), AI_TIMEOUT);
+      });
+      
+      const titlePromise = generateConversationTitle(teacher, initialMessage.content);
+      const result = await Promise.race([titlePromise, timeoutPromise]);
+      title = result as string;
+    } catch (error) {
+      console.error('Error or timeout generating title:', error);
+      // Fallback title
+      title = `Conversation with ${teacher === 'michael' ? 'Michael' : 'Emily'} - ${new Date().toLocaleDateString()}`;
+    }
 
     // Create new conversation
     const newConversation = await Conversation.create({
