@@ -4,7 +4,10 @@ frontend:
     preBuild:
       commands:
         - npm install
-        - npm install autoprefixer @tailwindcss/postcss -g
+        - npm install autoprefixer @tailwindcss/postcss tailwindcss -g
+        # Explicitly create a symbolic link to help with module resolution
+        - mkdir -p node_modules/@
+        - ln -sf $(pwd)/src node_modules/@/
     build:
       commands:
         # Ensure environment variables are in .env.local which Next.js reads by default

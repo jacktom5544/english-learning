@@ -1,4 +1,6 @@
 /** @type {import('next').NextConfig} */
+const path = require('path');
+
 const nextConfig = {
   // Basic configuration
   experimental: {
@@ -13,17 +15,17 @@ const nextConfig = {
   
   // Only add webpack config for handling server-only modules 
   webpack: (config, { isServer }) => {
+    // Add proper path aliases for Amplify environment
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': path.resolve(__dirname, './src'),
+    };
+
     // For client-side builds, specify fallbacks for Node.js modules
     if (!isServer) {
-      // First, create an alias for the HTML file that's causing problems
-      config.resolve.alias = {
-        ...config.resolve.alias,
-        '@mapbox/node-pre-gyp/lib/util/nw-pre-gyp/index.html': false,
-        // DO NOT alias these modules as they exist in the project
-        // '@/lib/teachers': require.resolve('./src/lib/emptyModule.js'),
-        // '@/lib/pointSystem': require.resolve('./src/lib/emptyModule.js'),
-        '@tailwindcss/postcss': false
-      };
+      // Handle problematic HTML file
+      config.resolve.alias['@mapbox/node-pre-gyp/lib/util/nw-pre-gyp/index.html'] = false;
+      config.resolve.alias['@tailwindcss/postcss'] = false;
       
       // Then handle all the server-only modules
       config.resolve.fallback = {
