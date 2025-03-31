@@ -11,6 +11,7 @@
     "update-vocabulary": "ts-node -r tsconfig-paths/register src/scripts/updateVocabularyWithExamples.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-ssm": "^3.777.0",
     "@shadcn/ui": "^0.0.4",
     "@stripe/stripe-js": "^6.1.0",
     "@tailwindcss/postcss": "^4.0.17",
