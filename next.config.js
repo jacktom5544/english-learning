@@ -62,10 +62,8 @@ const nextConfig = {
   },
 
   typescript: {
-    // !! WARN !!
-    // Dangerously allow production builds to successfully complete even if
-    // your project has type errors.
-    ignoreBuildErrors: true,
+    // We want to detect TypeScript errors during the build
+    ignoreBuildErrors: process.env.NEXT_TYPESCRIPT_CHECK === 'false',
   },
   
   // Add output configuration for standalone mode
