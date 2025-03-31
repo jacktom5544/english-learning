@@ -4,7 +4,8 @@ frontend:
     preBuild:
       commands:
         - npm install
-        - npm install autoprefixer postcss @tailwindcss/postcss tailwindcss --save
+        # Tailwind and autoprefixer should be installed via the main npm install
+        # - npm install autoprefixer postcss @tailwindcss/postcss tailwindcss --save
         # Dev dependencies will be installed by the main npm install and re-installed in build phase
         # - npm install --save-dev typescript @types/react @types/react-dom @types/node 
         # Explicitly create a symbolic link to help with module resolution
@@ -12,9 +13,9 @@ frontend:
         - ln -sf $(pwd)/src node_modules/@/
     build:
       commands:
-        # Ensure clean state and all dependencies are installed right before build
+        # Ensure clean state and all dependencies (including dev) are installed right before build
         - rm -rf node_modules 
-        - npm install
+        - npm install --include=dev
         # Ensure environment variables are in .env.local which Next.js reads by default
         - if [ -f ".env" ]; then cp .env .env.local; fi
         # Use the build:amplify script
