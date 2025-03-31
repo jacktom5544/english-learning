@@ -8,6 +8,16 @@ export interface IGrammar extends mongoose.Document {
     category: string;
     count: number;
   }[];
+  errorDetails: {
+    essayIndex: number;
+    errors: {
+      type: string;
+      text: string;
+      startPos: number;
+      endPos: number;
+      explanation: string;
+    }[];
+  }[];
   preferredTeacher: 'hiroshi' | 'reiko' | 'iwao' | 'taro';
   conversation: {
     sender: 'user' | 'teacher';
@@ -42,6 +52,34 @@ const GrammarSchema = new Schema<IGrammar>(
         type: Number,
         default: 1,
       }
+    }],
+    errorDetails: [{
+      essayIndex: {
+        type: Number,
+        required: true
+      },
+      errors: [{
+        type: {
+          type: String,
+          required: true
+        },
+        text: {
+          type: String,
+          required: true
+        },
+        startPos: {
+          type: Number,
+          required: true
+        },
+        endPos: {
+          type: Number,
+          required: true
+        },
+        explanation: {
+          type: String,
+          required: true
+        }
+      }]
     }],
     preferredTeacher: {
       type: String,

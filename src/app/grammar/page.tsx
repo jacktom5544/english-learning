@@ -6,11 +6,22 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { POINT_CONSUMPTION } from '@/lib/pointSystem';
 import { useUserPoints } from '@/components/providers/UserPointsProvider';
+import { EssayWithErrors } from './components';
 
 interface GrammarEntry {
   _id: string;
   topics: string[];
   essays: string[];
+  errorDetails?: {
+    essayIndex: number;
+    errors: {
+      type: string;
+      text: string;
+      startPos: number;
+      endPos: number;
+      explanation: string;
+    }[];
+  }[];
   grammaticalErrors: {
     category: string;
     count: number;
@@ -92,6 +103,9 @@ export default function GrammarPage() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   
   const [topics, setTopics] = useState<string[]>([]);
+  const [topicsEnglish, setTopicsEnglish] = useState<string[]>([]);
+  const [topicsJapanese, setTopicsJapanese] = useState<string[]>([]);
+  const [showJapaneseTopics, setShowJapaneseTopics] = useState(false);
   const [essays, setEssays] = useState<string[]>(['', '', '']);
   const [grammarEntryId, setGrammarEntryId] = useState('');
   const [grammaticalErrors, setGrammaticalErrors] = useState<{category: string, count: number}[]>([]);
@@ -104,6 +118,7 @@ export default function GrammarPage() {
   const [userQuestion, setUserQuestion] = useState('');
   const [isAskingQuestion, setIsAskingQuestion] = useState(false);
   const [wordCounts, setWordCounts] = useState<number[]>([0, 0, 0]);
+  const [analysisResult, setAnalysisResult] = useState<any>(null);
   
   const conversationEndRef = useRef<HTMLDivElement>(null);
 
@@ -223,11 +238,24 @@ export default function GrammarPage() {
       }
       
       console.log("Topics generated successfully:", data);
+      
+      // Store topics in state
       setTopics(data.topics);
+      
+      // For now, just use the same topics for both languages
+      // In a real implementation, you might want to request translations
+      setTopicsJapanese(data.topics);
+      setTopicsEnglish(data.topics);
+      
+      // Set Japanese topics by default for beginner levels
+      if (userProfile?.englishLevel === '超初級者' || userProfile?.englishLevel === '初級者') {
+        setShowJapaneseTopics(true);
+      }
+      
       setIsTopicGenerated(true);
       setMessage(data.modelUsed === "fallback" 
         ? 'AIサーバーに問題が発生しています。基本的なトピックで練習を続けることができます。' 
-        : `トピックが生成されました (Deepseek Chat を使用)`);
+        : `トピックが生成されました`);
       await refreshPoints();
     } catch (error: any) {
       console.error('Error generating topics:', error);
@@ -235,6 +263,10 @@ export default function GrammarPage() {
     } finally {
       setIsGeneratingTopics(false);
     }
+  };
+
+  const toggleTopicLanguage = () => {
+    setShowJapaneseTopics(!showJapaneseTopics);
   };
 
   const submitEssays = async () => {
@@ -255,9 +287,12 @@ export default function GrammarPage() {
 
     setIsSubmitting(true);
     setMessage('エッセイを分析中...');
+    
+    console.log("Starting essay submission process");
 
     try {
       // First create a grammar entry
+      console.log("Creating grammar entry...");
       const createResponse = await fetch('/api/grammar', {
         method: 'POST',
         headers: {
@@ -282,9 +317,11 @@ export default function GrammarPage() {
       }
 
       const grammarEntry = await createResponse.json();
+      console.log("Grammar entry created:", grammarEntry._id);
       setGrammarEntryId(grammarEntry._id);
 
       // Now analyze the essays
+      console.log("Sending essays for analysis...");
       const analysisResponse = await fetch('/api/grammar', {
         method: 'PATCH',
         headers: {
@@ -296,6 +333,8 @@ export default function GrammarPage() {
         }),
       });
 
+      console.log("Analysis response received, status:", analysisResponse.status);
+      
       if (!analysisResponse.ok) {
         const errorData = await analysisResponse.json().catch(() => ({}));
         console.error('Error analyzing essays:', {
@@ -307,20 +346,43 @@ export default function GrammarPage() {
       }
 
       const analysisResult = await analysisResponse.json();
+      console.log("Analysis result:", analysisResult);
       
-      if (!analysisResult.analysis || !analysisResult.teacherFeedback) {
+      // Handle the different response structure from Deepseek
+      if (!analysisResult.analysis && analysisResult.errorCategories && analysisResult.errors) {
+        // Direct structure from Deepseek extraction
+        setGrammaticalErrors(analysisResult.errorCategories || []);
+        setAnalysisResult({
+          analysis: {
+            errorCategories: analysisResult.errorCategories || [],
+            errors: analysisResult.errors || []
+          },
+          teacherFeedback: analysisResult.feedback || "エッセイを分析しました。"
+        });
+        
+        // Add teacher feedback to conversation
+        setConversation([{
+          sender: 'teacher',
+          content: analysisResult.feedback || "エッセイを分析しました。",
+          timestamp: new Date().toISOString()
+        }]);
+      } else if (analysisResult.analysis && analysisResult.teacherFeedback) {
+        // Original expected structure
+        setGrammaticalErrors(analysisResult.analysis.errorCategories || []);
+        setAnalysisResult(analysisResult);
+        setConversation([{
+          sender: 'teacher',
+          content: analysisResult.teacherFeedback,
+          timestamp: new Date().toISOString()
+        }]);
+      } else {
         console.error('Invalid analysis result format:', analysisResult);
         throw new Error('Server returned invalid analysis format');
       }
       
-      setGrammaticalErrors(analysisResult.analysis.errorCategories || []);
-      setConversation([{
-        sender: 'teacher',
-        content: analysisResult.teacherFeedback,
-        timestamp: new Date().toISOString()
-      }]);
       setIsEssaysSubmitted(true);
       setIsAnalysisCompleted(true);
+      setMessage('エッセイの分析が完了しました');
       await refreshPoints();
     } catch (error: any) {
       console.error('Error submitting essays:', error);
@@ -425,6 +487,25 @@ export default function GrammarPage() {
     setUserQuestion('');
   };
 
+  // Function to filter out teacher introduction from feedback
+  const filterTeacherIntroduction = (content: string) => {
+    // Find the first paragraph break after any introduction text
+    const introPatterns = [
+      '文法ミスの傾向を知りたい',
+      '英文を書いて',
+      '出来るだけ長く書いて'
+    ];
+    
+    if (introPatterns.some(pattern => content.includes(pattern))) {
+      const paragraphBreak = content.indexOf('\n\n');
+      if (paragraphBreak !== -1) {
+        return content.substring(paragraphBreak + 2);
+      }
+    }
+    
+    return content;
+  };
+
   if (isLoading || !userProfile) {
     return (
       <div className="container mx-auto p-4">
@@ -449,7 +530,9 @@ export default function GrammarPage() {
         </div>
       )}
       
-      <TeacherMessage teacher={userProfile.preferredTeacher} nickname={userProfile.nickname} />
+      {!isEssaysSubmitted && (
+        <TeacherMessage teacher={userProfile.preferredTeacher} nickname={userProfile.nickname} />
+      )}
       
       {!isTopicGenerated ? (
         <div className="mb-6">
@@ -481,7 +564,16 @@ export default function GrammarPage() {
         </div>
       ) : !isEssaysSubmitted ? (
         <div className="mb-6">
-          <h2 className="text-xl font-semibold mb-4">トピック (3つの中から好きなものを選んで英作文を書いてください)</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">トピック (3つの中から好きなものを選んで英作文を書いてください)</h2>
+            <button 
+              onClick={toggleTopicLanguage}
+              className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 rounded"
+            >
+              {showJapaneseTopics ? '英語で表示する' : '日本語で表示する'}
+            </button>
+          </div>
+          
           {topics.map((topic, index) => (
             <div key={index} className="mb-6">
               <div className="bg-white p-4 rounded-lg shadow mb-2">
@@ -537,32 +629,55 @@ export default function GrammarPage() {
           {grammaticalErrors.length > 0 && (
             <div className="mb-6">
               <h2 className="text-xl font-semibold mb-2">文法エラー分析</h2>
-              <div className="bg-white p-4 rounded-lg shadow mb-4">
-                <table className="w-full">
-                  <thead>
-                    <tr>
-                      <th className="text-left py-2">エラーの種類</th>
-                      <th className="text-right py-2">回数</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {grammaticalErrors.map((error, index) => (
-                      <tr key={index} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                        <td className="py-2">{error.category}</td>
-                        <td className="text-right py-2">{error.count}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="bg-white p-4 rounded-lg shadow">
+                <div className="flex flex-wrap gap-2">
+                  {grammaticalErrors.map((error, index) => (
+                    <div key={index} className="px-3 py-1 bg-red-50 text-red-700 rounded-full text-sm">
+                      {error.category} ({error.count})
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
           
           <div className="mb-6">
+            <h2 className="text-xl font-semibold mb-2">提出したエッセイ</h2>
+            {essays.map((essay, index) => (
+              <div key={index} className="mb-4 bg-white p-4 rounded-lg shadow">
+                <h3 className="font-medium mb-2">エッセイ {index + 1}: {topics[index]}</h3>
+                {(() => {
+                  const essayErrors = analysisResult?.analysis?.errors?.find(
+                    (e: {essayIndex: number, errors: any[]}) => e.essayIndex === index
+                  )?.errors || [];
+                  console.log(`Essay ${index} errors:`, essayErrors);
+                  
+                  return analysisResult?.analysis?.errors ? (
+                    <EssayWithErrors 
+                      essay={essay} 
+                      errors={essayErrors} 
+                    />
+                  ) : (
+                    <div className="whitespace-pre-wrap bg-gray-50 p-3 rounded border border-gray-200">
+                      {essay}
+                    </div>
+                  );
+                })()}
+              </div>
+            ))}
+          </div>
+          
+          <div className="mb-6">
             <h2 className="text-xl font-semibold mb-2">先生の説明</h2>
             <div className="bg-white rounded-lg shadow overflow-hidden">
               <div className="h-80 overflow-y-auto p-4">
-                {conversation.map((message, index) => (
+                {conversation.filter((msg, idx) => 
+                  !(idx === 0 && msg.sender === 'teacher' && 
+                    (msg.content.includes('文法ミスの傾向を知りたい') || 
+                     msg.content.includes('英文を書いて下さい') ||
+                     msg.content.includes('英文を書いてくれへん') ||
+                     msg.content.includes('英文を書いてくれ')))
+                ).map((message, index) => (
                   <div 
                     key={index} 
                     className={`mb-4 ${
@@ -586,7 +701,11 @@ export default function GrammarPage() {
                         {message.sender === 'teacher' ? teacherInfo[userProfile.preferredTeacher].name : userProfile.nickname}
                       </span>
                     </div>
-                    <p className="whitespace-pre-wrap">{message.content}</p>
+                    <p className="whitespace-pre-wrap">
+                      {message.sender === 'teacher' && index === 0 
+                        ? filterTeacherIntroduction(message.content) 
+                        : message.content}
+                    </p>
                   </div>
                 ))}
                 <div ref={conversationEndRef} />
