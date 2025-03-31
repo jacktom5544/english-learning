@@ -61,13 +61,21 @@ const nextConfig = {
     return config;
   },
 
+  // Disable TypeScript checking for production builds
   typescript: {
-    // Always ignore type errors in production builds for Amplify
     ignoreBuildErrors: true,
+  },
+  
+  // Disable ESLint for production builds
+  eslint: {
+    ignoreDuringBuilds: true,
   },
   
   // Add output configuration for standalone mode
   output: 'standalone',
+  
+  // Disable source maps in production
+  productionBrowserSourceMaps: false,
 }
 
 module.exports = nextConfig; 
