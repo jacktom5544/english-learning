@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build --no-lint --no-types-check",
+    "build": "next build --no-lint",
     "start": "next start",
     "lint": "next lint",
     "update-vocabulary": "ts-node -r tsconfig-paths/register src/scripts/updateVocabularyWithExamples.ts"
