@@ -14,7 +14,7 @@ if (!apiKey) {
 const deepseek = new OpenAI({
   apiKey,
   baseURL: apiBaseUrl,
-  timeout: 9000, // Reduced to 9 seconds to be under Vercel's 10-second limit
+  timeout: 30000, // Increased to 30 seconds from 9 seconds to handle slower responses in production
   maxRetries: 3, // Increased retries
 });
 
