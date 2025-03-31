@@ -27,6 +27,6 @@ Cloudinary for image storage
 Recharts for graph/charts
 The website should be fully Responsive(PC, Tablet and Smartphone)
 Since this service is for Japanese, UI should be in Japanese
-Use Deepseek chat for generating English quiz/writing topic and giving a feedback to the students
+Use Deepseek chat for AI generate contents
 Make sure the code you generate is secure and follows the best practice
 Don't edit content of .env.local

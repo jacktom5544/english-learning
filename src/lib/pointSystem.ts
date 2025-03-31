@@ -22,4 +22,13 @@ export const POINT_CONSUMPTION = {
   
   // Points consumed for starting a quiz in Quiz page
   QUIZ_START: 1,
+  
+  // Points consumed for grammar check submission
+  GRAMMAR_CHECK: 1,
+  
+  // Points consumed for generating grammar topics
+  GRAMMAR_TOPIC_GENERATION: 1,
+  
+  // Points consumed for analyzing grammar
+  GRAMMAR_ANALYSIS: 1,
 }; 
