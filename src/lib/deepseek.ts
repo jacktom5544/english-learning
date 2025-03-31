@@ -3,7 +3,7 @@ import 'server-only';
 
 // Initialize DeepSeek client with OpenAI-compatible API
 const apiKey = process.env.DEEPSEEK_API_KEY || '';
-const apiBaseUrl = process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com/v1';
+const apiBaseUrl = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1';
 
 // Ensure we have the API key
 if (!apiKey) {
