@@ -195,7 +195,7 @@ export default function GrammarPage() {
 
   const generateTopics = async () => {
     if (!hasEnoughPoints('TOPIC_GENERATION')) {
-      setMessage('ポイントが足りません。ポイントを購入するか、明日また試してください。');
+      setMessage('ポイントが足りません。');
       return;
     }
 
@@ -237,7 +237,7 @@ export default function GrammarPage() {
         throw new Error('サーバーから有効なトピックが返されませんでした');
       }
       
-      console.log("Topics generated successfully:", data);
+     
       
       // Store topics in state
       setTopics(data.topics);
@@ -281,18 +281,18 @@ export default function GrammarPage() {
     }
 
     if (!hasEnoughPoints('ANALYSIS')) {
-      setMessage('ポイントが足りません。ポイントを購入するか、明日また試してください。');
+      setMessage('ポイントが足りません。');
       return;
     }
 
     setIsSubmitting(true);
     setMessage('エッセイを分析中...');
     
-    console.log("Starting essay submission process");
+   
 
     try {
       // First create a grammar entry
-      console.log("Creating grammar entry...");
+      
       const createResponse = await fetch('/api/grammar', {
         method: 'POST',
         headers: {
@@ -317,11 +317,11 @@ export default function GrammarPage() {
       }
 
       const grammarEntry = await createResponse.json();
-      console.log("Grammar entry created:", grammarEntry._id);
+      
       setGrammarEntryId(grammarEntry._id);
 
       // Now analyze the essays
-      console.log("Sending essays for analysis...");
+      
       const analysisResponse = await fetch('/api/grammar', {
         method: 'PATCH',
         headers: {
@@ -333,7 +333,7 @@ export default function GrammarPage() {
         }),
       });
 
-      console.log("Analysis response received, status:", analysisResponse.status);
+      
       
       if (!analysisResponse.ok) {
         const errorData = await analysisResponse.json().catch(() => ({}));
@@ -346,7 +346,7 @@ export default function GrammarPage() {
       }
 
       const analysisResult = await analysisResponse.json();
-      console.log("Analysis result:", analysisResult);
+      
       
       // Handle the different response structure from Deepseek
       if (!analysisResult.analysis && analysisResult.errorCategories && analysisResult.errors) {
@@ -399,7 +399,7 @@ export default function GrammarPage() {
     }
 
     if (!hasEnoughPoints('QUESTION')) {
-      setMessage('ポイントが足りません。ポイントを購入するか、明日また試してください。');
+      setMessage('ポイントが足りません。');
       return;
     }
 
