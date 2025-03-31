@@ -8,7 +8,7 @@ frontend:
       commands:
         # Ensure environment variables are in .env.local which Next.js reads by default
         - if [ -f ".env" ]; then cp .env .env.local; fi
-        - npm run build
+        - npm run build:amplify
   artifacts:
     baseDirectory: .next
     files:
