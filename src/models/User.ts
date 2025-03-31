@@ -18,6 +18,8 @@ export interface IUser extends mongoose.Document {
   pointsLastUpdated: Date;
   pointsUsedThisMonth: number;
   subscriptionStatus: 'inactive' | 'active' | 'cancelled';
+  resetPasswordToken?: string;
+  resetPasswordExpires?: Date;
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;
@@ -98,6 +100,12 @@ const UserSchema = new Schema<IUser>(
       type: String,
       enum: ['inactive', 'active', 'cancelled'],
       default: 'inactive',
+    },
+    resetPasswordToken: {
+      type: String,
+    },
+    resetPasswordExpires: {
+      type: Date,
     },
   },
   {
