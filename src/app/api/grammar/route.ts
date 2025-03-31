@@ -352,7 +352,7 @@ export async function PUT(req: NextRequest) {
       console.log("User not found:", session.user.id);
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
-    console.log("User found:", user.email || user.name);
+    console.log("User found:", "[email redacted]");
     
     // Check if user has enough points
     if (user.points < POINT_CONSUMPTION.GRAMMAR_TOPIC_GENERATION) {
@@ -365,7 +365,11 @@ export async function PUT(req: NextRequest) {
     const englishLevel = user.englishLevel || 'beginner';
     const job = user.job || '';
     const goal = user.goal || '';
-    console.log("User profile data:", { englishLevel, job, goal });
+    console.log("User profile data:", { 
+      englishLevel: englishLevel || "[redacted]", 
+      job: "[redacted]", 
+      goal: "[redacted]" 
+    });
 
     let systemPrompt = `Generate 3 random, unique essay topics for ${englishLevel} English learners`;
     if (job) systemPrompt += ` who work as ${job}`;
@@ -378,7 +382,7 @@ export async function PUT(req: NextRequest) {
       systemPrompt += `. The topics should be detailed enough to encourage writing at least 100 words.`;
     }
     
-    console.log("System prompt:", systemPrompt);
+    console.log("System prompt initialized");
     
     // Check if Deepseek API key is set
     if (!process.env.DEEPSEEK_API_KEY) {
@@ -405,11 +409,11 @@ export async function PUT(req: NextRequest) {
         temperature: 0.8,
         max_tokens: 300
       });
-      console.log("Deepseek response received");
+      console.log("Raw content from Deepseek received");
       
       if (response.choices && response.choices.length > 0 && response.choices[0].message.content) {
         const content = response.choices[0].message.content;
-        console.log("Raw content from Deepseek:", content);
+        console.log("Raw content from Deepseek received");
         
         topics = extractTopicsFromContent(content);
         modelUsed = "deepseek-chat";
@@ -475,7 +479,9 @@ export async function PUT(req: NextRequest) {
 
 // Helper function to extract topics from content
 function extractTopicsFromContent(content: string): string[] {
-  console.log("Extracting topics from content:", content);
+  console.log("Extracting topics from content");
+  
+  if (!content) return [];
   
   // Remove any markdown formatting that might be present
   content = content.replace(/```[a-z]*\n|\n```/g, '');
@@ -589,7 +595,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     console.log("About to call Deepseek API for grammar analysis");
-    console.log("Deepseek API Key exists:", !!process.env.DEEPSEEK_API_KEY);
+    console.log("Deepseek API Key configured:", !!process.env.DEEPSEEK_API_KEY);
     console.log("Deepseek client initialized:", !!deepseek);
     
     // Analyze grammar using Deepseek
@@ -677,7 +683,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     const analysisContent = response.choices[0].message.content || '{}';
-    console.log("Raw response content:", analysisContent.substring(0, 200) + "...");
+    console.log("Raw response content received");
     
     let analysisResult;
     
@@ -776,15 +782,13 @@ export async function PATCH(req: NextRequest) {
     try {
       // Extract and parse the JSON
       const extractedContent = extractJsonFromMarkdown(analysisContent);
-      console.log("Attempting to parse content:", extractedContent.substring(0, 200) + "...");
+      console.log("Attempting to parse content");
       analysisResult = JSON.parse(extractedContent);
       
       // Log the analysis result for debugging
       console.log("Successfully parsed analysis result");
       console.log("Error categories:", analysisResult.errorCategories?.length || 0);
-      console.log("Errors structure:", JSON.stringify(analysisResult.errors?.map((e: any) => 
-        ({ essayIndex: e.essayIndex, errorCount: e.errors?.length || 0 })
-      )));
+      console.log("Errors structure found:", !!analysisResult.errors);
       
       // Validate the result structure
       if (!analysisResult.errorCategories) {
@@ -835,7 +839,7 @@ export async function PATCH(req: NextRequest) {
       }
     } catch (parseError) {
       console.error("Failed to parse JSON from Deepseek:", parseError);
-      console.log("Full raw content for debugging:", analysisContent);
+      console.log("Full raw content logging skipped for privacy");
       
       // Create a fallback analysis result
       analysisResult = {
@@ -852,7 +856,7 @@ export async function PATCH(req: NextRequest) {
       if (jsonMatch) {
         try {
           const extractedJson = jsonMatch[0];
-          console.log("Attempting to parse extracted JSON:", extractedJson.substring(0, 200) + "...");
+          console.log("Attempting to parse extracted JSON");
           analysisResult = JSON.parse(extractedJson);
           console.log("Successfully parsed extracted JSON");
           

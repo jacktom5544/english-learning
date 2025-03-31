@@ -17,7 +17,7 @@ const FAKE_FEEDBACK = {
 
 // Generate a topic using DeepSeek AI
 async function generateTopic(level: string, job: string, goal: string): Promise<string> {
-  console.log(`Generating topic for level: ${level}, job: ${job || '不明'}`);
+  console.log(`Generating topic for level: ${level}`);
   
   const prompt = `
     英語学習者に適した英作文のトピックを1つ作成してください。

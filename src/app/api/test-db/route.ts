@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     
     // Check if we have a valid session
     const session = await getServerSession(authOptions);
-    console.log('Session:', session ? 'Valid' : 'Invalid', session?.user?.id ? 'Has user ID' : 'No user ID');
+    console.log('Session status:', !!session);
     
     await connectDB();
 

@@ -144,7 +144,8 @@ export default function GrammarPage() {
         });
       }
     } catch (error) {
-      console.error('Failed to fetch profile:', error);
+      // Error silently handled
+      setIsLoading(false);
     } finally {
       setIsLoading(false);
     }
@@ -213,17 +214,10 @@ export default function GrammarPage() {
 
       // Read response data even if not OK to get error details
       const data = await response.json().catch(err => {
-        console.error("Failed to parse response JSON:", err);
         return { error: "Could not parse server response" };
       });
 
       if (!response.ok) {
-        console.error('Error response from server:', {
-          status: response.status,
-          statusText: response.statusText,
-          data
-        });
-        
         let errorMessage = `トピックの生成に失敗しました: ${response.status} ${response.statusText}`;
         if (data.message) {
           errorMessage += ` - ${data.message}`;
@@ -233,7 +227,6 @@ export default function GrammarPage() {
       }
 
       if (!data.topics || !Array.isArray(data.topics) || data.topics.length === 0) {
-        console.error('Invalid response format or empty topics:', data);
         throw new Error('サーバーから有効なトピックが返されませんでした');
       }
       
@@ -258,7 +251,6 @@ export default function GrammarPage() {
         : `トピックが生成されました`);
       await refreshPoints();
     } catch (error: any) {
-      console.error('Error generating topics:', error);
       setMessage(`トピックの生成に失敗しました。${error.message || 'しばらくしてからもう一度お試しください。'}`);
     } finally {
       setIsGeneratingTopics(false);
@@ -308,11 +300,6 @@ export default function GrammarPage() {
 
       if (!createResponse.ok) {
         const errorData = await createResponse.json().catch(() => ({}));
-        console.error('Error creating grammar entry:', {
-          status: createResponse.status,
-          statusText: createResponse.statusText,
-          data: errorData
-        });
         throw new Error(`Failed to create grammar entry: ${createResponse.status} ${createResponse.statusText}`);
       }
 
@@ -337,11 +324,6 @@ export default function GrammarPage() {
       
       if (!analysisResponse.ok) {
         const errorData = await analysisResponse.json().catch(() => ({}));
-        console.error('Error analyzing essays:', {
-          status: analysisResponse.status,
-          statusText: analysisResponse.statusText,
-          data: errorData
-        });
         throw new Error(`Failed to analyze essays: ${analysisResponse.status} ${analysisResponse.statusText}`);
       }
 
@@ -376,7 +358,6 @@ export default function GrammarPage() {
           timestamp: new Date().toISOString()
         }]);
       } else {
-        console.error('Invalid analysis result format:', analysisResult);
         throw new Error('Server returned invalid analysis format');
       }
       
@@ -385,7 +366,6 @@ export default function GrammarPage() {
       setMessage('エッセイの分析が完了しました');
       await refreshPoints();
     } catch (error: any) {
-      console.error('Error submitting essays:', error);
       setMessage(`エッセイの分析に失敗しました。${error.message || 'しばらくしてからもう一度お試しください。'}`);
     } finally {
       setIsSubmitting(false);
@@ -433,11 +413,6 @@ export default function GrammarPage() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.error('Error response from server:', {
-          status: response.status,
-          statusText: response.statusText,
-          data: errorData
-        });
         throw new Error(`Failed to get response: ${response.status} ${response.statusText}`);
       }
 
@@ -455,7 +430,6 @@ export default function GrammarPage() {
       
       await refreshPoints();
     } catch (error: any) {
-      console.error('Error asking question:', error);
       setMessage(`質問の送信に失敗しました。${error.message || 'しばらくしてからもう一度お試しください。'}`);
     } finally {
       setIsAskingQuestion(false);
@@ -650,7 +624,6 @@ export default function GrammarPage() {
                   const essayErrors = analysisResult?.analysis?.errors?.find(
                     (e: {essayIndex: number, errors: any[]}) => e.essayIndex === index
                   )?.errors || [];
-                  console.log(`Essay ${index} errors:`, essayErrors);
                   
                   return analysisResult?.analysis?.errors ? (
                     <EssayWithErrors 
