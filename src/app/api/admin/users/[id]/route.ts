@@ -4,9 +4,11 @@ import { authOptions } from '@/lib/auth';
 import { connectToDatabase } from '@/lib/db';
 import User from '@/models/User';
 
+type Params = { params: { id: string } };
+
 export async function PATCH(
-  req: NextRequest,
-  context: { params: { id: string } }
+  request: NextRequest,
+  params: Params
 ) {
   try {
     // Get the user's session
@@ -21,7 +23,7 @@ export async function PATCH(
     }
     
     // Get request body
-    const { points } = await req.json();
+    const { points } = await request.json();
     
     // Validate input
     if (points === undefined || points < 0) {
@@ -36,7 +38,7 @@ export async function PATCH(
     
     // Update the user
     const updatedUser = await User.findByIdAndUpdate(
-      context.params.id,
+      params.params.id,
       { 
         points,
         pointsLastUpdated: new Date()
