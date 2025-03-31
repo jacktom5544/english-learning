@@ -30,6 +30,8 @@ export default function ChatInterface({ conversation, onConversationUpdate }: Ch
   const [isGrammarCorrectionEnabled, setIsGrammarCorrectionEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isTeacherTyping, setIsTeacherTyping] = useState(false);
+  const [wordCount, setWordCount] = useState(0);
+  const [inputError, setInputError] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const conversationRef = useRef(conversation);
   const onUpdateRef = useRef(onConversationUpdate);
@@ -60,12 +62,53 @@ export default function ChatInterface({ conversation, onConversationUpdate }: Ch
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // Sanitize input to prevent code injection
+  const sanitizeInput = (input: string): string => {
+    return input
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;')
+      .trim();
+  };
+
+  // Count words in the input text
+  const countWords = (text: string): number => {
+    return text.trim().split(/\s+/).filter(word => word.length > 0).length;
+  };
+
+  // Handle input change with validation
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const inputText = e.target.value;
+    const currentWordCount = countWords(inputText);
+    
+    setNewMessage(inputText);
+    setWordCount(currentWordCount);
+    
+    if (currentWordCount > 200) {
+      setInputError('Please limit your message to 200 words');
+    } else {
+      setInputError('');
+    }
+  };
+
   // Memoize handleSendMessage to prevent recreations
   const handleSendMessage = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || isLoading) return;
+    
+    // Check word count before sending
+    if (wordCount > 200) {
+      setInputError('Please limit your message to 200 words');
+      return;
+    }
+    
+    // Clear error if any
+    setInputError('');
 
-    const userMessageContent = newMessage.trim();
+    // Sanitize user message content
+    const userMessageContent = sanitizeInput(newMessage.trim());
     setIsLoading(true);
     
     try {
@@ -175,7 +218,7 @@ export default function ChatInterface({ conversation, onConversationUpdate }: Ch
     } finally {
       setIsLoading(false);
     }
-  }, [newMessage, isLoading, isGrammarCorrectionEnabled, consumePoints]);
+  }, [newMessage, isLoading, isGrammarCorrectionEnabled, consumePoints, wordCount]);
 
   const renderTeacherInfo = useCallback(() => {
     return (
@@ -266,22 +309,31 @@ export default function ChatInterface({ conversation, onConversationUpdate }: Ch
             />
             Enable grammar correction
           </label>
+          <span className={`text-sm ${wordCount > 200 ? 'text-red-500' : 'text-gray-500'}`}>
+            {wordCount}/200 words
+          </span>
         </div>
+        {inputError && (
+          <div className="text-red-500 text-sm mb-2">{inputError}</div>
+        )}
         <form onSubmit={handleSendMessage} className="flex">
           <input
             type="text"
             value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
+            onChange={handleInputChange}
             placeholder="Type your message..."
-            className="flex-1 border rounded-l-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className={`flex-1 border rounded-l-lg px-4 py-2 focus:outline-none focus:ring-2 ${
+              inputError ? 'border-red-500 focus:ring-red-500' : 'focus:ring-blue-500'
+            }`}
             disabled={isLoading}
+            maxLength={1000} // Add character limit as an additional safeguard
           />
           <button
             type="submit"
             className={`px-4 py-2 bg-blue-600 text-white rounded-r-lg ${
-              isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700'
+              isLoading || inputError ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700'
             }`}
-            disabled={isLoading}
+            disabled={isLoading || !!inputError}
           >
             {isLoading ? 'Sending...' : 'Send'}
           </button>

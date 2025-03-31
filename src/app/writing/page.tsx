@@ -29,25 +29,25 @@ const teacherInfo = {
   hiroshi: {
     name: 'ひろし先生',
     image: '/hiroshi.png',
-    messageTemplate: 'が{name}はんに合ったトピックを作るからそれに合った英文を書いてや！結果を楽しみにしてるで！',
+    messageTemplate: '{name}はんに合ったトピックを作るからそれに合った英文を書いてや！結果を楽しみにしてるで！',
     prefix: '俺'
   },
   reiko: {
     name: '玲子先生',
     image: '/reiko.png',
-    messageTemplate: 'が{name}さんに合ったトピックを作りますのでそれに合った英文を書いて下さいね！結果を楽しみにしてますわ！',
+    messageTemplate: '{name}さんに合ったトピックを作りますのでそれに合った英文を書いて下さいね！結果を楽しみにしてますわ！',
     prefix: 'わたくし'
   },
   iwao: {
     name: '巌男先生',
     image: '/iwao.png',
-    messageTemplate: 'がお前に合ったトピックを作るからそれに合った英文を書いてこい！おい、間違ってもガッカリさせんじゃねーぞ！',
+    messageTemplate: 'お前に合ったトピックを作るからそれに合った英文を書いてこい！おい、間違ってもガッカリさせんじゃねーぞ！',
     prefix: '俺'
   },
   taro: {
     name: '太郎先生',
     image: '/taro.png',
-    messageTemplate: 'が{name}さんに合ったトピックを作るのでそれに合った英文を書いて下さい。結果を楽しみにしてますね。',
+    messageTemplate: '{name}さんに合ったトピックを作るのでそれに合った英文を書いて下さい。結果を楽しみにしてますね。',
     prefix: '僕'
   }
 };
@@ -57,9 +57,15 @@ interface TeacherMessageProps {
 }
 
 function TeacherMessage({ teacher }: TeacherMessageProps) {
+  const { data: session } = useSession();
   const info = teacherInfo[teacher];
-  const message = "ライティングの練習をしましょう。トピックを生成すると始められますよ。";
-
+  
+  // Get user's name from session or use a fallback
+  const userName = session?.user?.name || '';
+  
+  // Create message from template
+  const message = info.messageTemplate.replace('{name}', userName);
+  
   return (
     <div className="flex items-center space-x-4 mb-6 bg-white p-4 rounded-lg shadow">
       <div className="flex-shrink-0 w-16 h-16 relative">
@@ -283,8 +289,8 @@ export default function WritingPage() {
     }
 
     // Check if the user has enough points
-    if (points < POINT_CONSUMPTION.WRITING_ESSAY) {
-      setMessage(`ポイントが不足しています。必要なポイント: ${POINT_CONSUMPTION.WRITING_ESSAY}, 現在のポイント: ${points}`);
+    if (!hasEnoughPoints()) {
+      setMessage(`ポイントが不足しています。必要なポイント: ${POINT_CONSUMPTION.WRITING_ESSAY}, 現在のポイント: ${points || 0}`);
       return;
     }
 
@@ -366,11 +372,17 @@ export default function WritingPage() {
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const text = e.target.value;
-    setUserContent(text);
     
     // Calculate word count (split by spaces and filter empty strings)
     const words = text.trim().split(/\s+/).filter(word => word.length > 0);
-    setWordCount(words.length);
+    
+    // Check if the word count exceeds 400 words
+    if (words.length <= 400) {
+      // Sanitize the input to prevent code injection
+      const sanitizedText = text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+      setUserContent(sanitizedText);
+      setWordCount(words.length);
+    }
   };
 
   const resetWriting = () => {
@@ -403,39 +415,38 @@ export default function WritingPage() {
             <p className="text-gray-600">{topic}</p>
           </div>
 
-          <div className="mb-4">
-            <label htmlFor="content" className="block text-sm font-medium text-gray-700 mb-2">
-              英作文
-            </label>
-            <textarea
-              id="content"
-              rows={6}
-              value={userContent}
-              onChange={(e) => {
-                setUserContent(e.target.value);
-                // Count words (split by whitespace)
-                setWordCount(e.target.value.trim().split(/\s+/).filter(Boolean).length);
-              }}
-              className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-              placeholder="ここに英語で文章を書いてください..."
-              disabled={isFeedbackReceived}
-            />
-            <p className="mt-1 text-sm text-gray-500">
-              単語数: {wordCount} words {wordCount < 5 && wordCount > 0 && '(最低5単語必要です)'}
-            </p>
-          </div>
-
-          {!isFeedbackReceived && (
-            <div className="flex justify-end">
-              <button
-                onClick={submitWriting}
-                disabled={isSubmitting || wordCount < 5}
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-              >
-                {isSubmitting ? '送信中...' : 'フィードバックを受け取る'}
-              </button>
+          {!isFeedbackReceived ? (
+            <div className="mb-4">
+              <label htmlFor="content" className="block text-sm font-medium text-gray-700 mb-2">
+                英作文
+              </label>
+              <textarea
+                id="content"
+                rows={6}
+                value={userContent}
+                onChange={handleTextChange}
+                className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                placeholder="ここに英語で文章を書いてください..."
+                disabled={isFeedbackReceived}
+              />
+              <p className="mt-1 text-sm text-gray-500">
+                単語数: {wordCount}/400 words {wordCount < 5 && wordCount > 0 && '(最低5単語必要です)'}
+                {wordCount >= 400 && ' (最大単語数に達しました)'}
+              </p>
+              
+              {!isFeedbackReceived && (
+                <div className="flex justify-end mt-4">
+                  <button
+                    onClick={submitWriting}
+                    disabled={isSubmitting || wordCount < 5}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                  >
+                    {isSubmitting ? '送信中...' : 'フィードバックを受け取る'}
+                  </button>
+                </div>
+              )}
             </div>
-          )}
+          ) : null}
 
           {isSubmitting && (
             <div className="mt-8 flex flex-col items-center">
@@ -452,10 +463,46 @@ export default function WritingPage() {
 
         {isFeedbackReceived && feedback && (
           <div className="bg-white shadow rounded-lg p-6">
-            <h2 className="text-lg font-medium text-gray-900 mb-4">フィードバック</h2>
-            <div className="prose max-w-none whitespace-pre-line text-gray-600">
-              {feedback}
+            <div className="flex items-start space-x-4 mb-6">
+              <div className="flex-shrink-0 w-12 h-12 relative">
+                {userProfile && (
+                  <div className="absolute inset-0 rounded-full overflow-hidden">
+                    <Image
+                      src={teacherInfo[userProfile.preferredTeacher].image}
+                      alt={teacherInfo[userProfile.preferredTeacher].name}
+                      fill
+                      style={{ objectFit: 'cover' }}
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="flex-1">
+                <h3 className="font-medium text-gray-900 mb-1">
+                  {userProfile && teacherInfo[userProfile.preferredTeacher].name}からのフィードバック
+                </h3>
+                <p className="text-sm text-gray-500">
+                  {new Date().toLocaleString('ja-JP')}
+                </p>
+              </div>
             </div>
+
+            <div className="mb-4">
+              <h2 className="text-lg font-medium text-gray-900 mb-2">トピック</h2>
+              <p className="text-gray-600">{topic}</p>
+            </div>
+
+            <div className="mb-4">
+              <h2 className="text-lg font-medium text-gray-900 mb-2">あなたの回答</h2>
+              <p className="text-gray-600 whitespace-pre-line">{userContent}</p>
+            </div>
+
+            <div className="mb-4">
+              <h2 className="text-lg font-medium text-gray-900 mb-2">フィードバック</h2>
+              <div className="prose max-w-none whitespace-pre-line text-gray-600">
+                {feedback}
+              </div>
+            </div>
+            
             <div className="mt-4 pt-4 border-t border-gray-200">
               <p className="text-gray-700">
                 スコア: <span className="font-medium">{score}</span>/100
@@ -463,15 +510,7 @@ export default function WritingPage() {
             </div>
             <div className="mt-4 flex justify-end">
               <button
-                onClick={() => {
-                  setIsTopicGenerated(false);
-                  setIsFeedbackReceived(false);
-                  setUserContent('');
-                  setFeedback('');
-                  setScore(0);
-                  setWordCount(0);
-                  setTopic('');
-                }}
+                onClick={resetWriting}
                 className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 新しいトピックで書く
@@ -548,34 +587,20 @@ export default function WritingPage() {
                 </svg>
               </button>
             </div>
-            {points < POINT_CONSUMPTION.WRITING_ESSAY && (
-              <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded mb-4">
-                ポイントが不足しています。必要なポイント: {POINT_CONSUMPTION.WRITING_ESSAY}, 現在のポイント: {points}
-              </div>
-            )}
-            <button
-              onClick={generateTopic}
-              disabled={isGeneratingTopic || points < POINT_CONSUMPTION.WRITING_ESSAY}
-              className={`px-4 py-2 rounded ${
-                isGeneratingTopic || points < POINT_CONSUMPTION.WRITING_ESSAY
-                  ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-blue-600 hover:bg-blue-700 text-white'
-              } transition-colors`}
-            >
-              {isGeneratingTopic ? 'トピック生成中...' : 
-               points < POINT_CONSUMPTION.WRITING_ESSAY ? 'ポイント不足' : 'トピックを生成する'}
-            </button>
-            {isGeneratingTopic && (
-              <div className="mt-8 flex flex-col items-center">
-                <div className="animate-pulse flex space-x-4 mb-4">
-                  <div className="h-12 w-12 bg-blue-400 rounded-full animate-bounce"></div>
-                  <div className="h-12 w-12 bg-blue-500 rounded-full animate-bounce delay-100"></div>
-                  <div className="h-12 w-12 bg-blue-600 rounded-full animate-bounce delay-200"></div>
-                </div>
-                <p className="text-lg font-medium text-gray-700 mt-2">AIが現在作成中です・・・</p>
-                <p className="text-sm text-gray-500 mt-1">少々お待ちください</p>
-              </div>
-            )}
+            <div className="mb-4">
+              <p className="text-gray-600 mb-2">
+                1回の利用で{POINT_CONSUMPTION.WRITING_ESSAY}ポイント消費します。
+              </p>
+            </div>
+            <div className="flex justify-center">
+              <button
+                onClick={generateTopic}
+                disabled={isGeneratingTopic || !hasEnoughPoints()}
+                className="inline-flex items-center px-6 py-3 border border-transparent text-lg font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+              >
+                {isGeneratingTopic ? 'トピック生成中...' : 'トピックを生成する'}
+              </button>
+            </div>
           </div>
         ) : (
           renderContent()
