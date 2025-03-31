@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db';
 import User from '@/models/User';
-import { INITIAL_POINTS } from '@/lib/pointSystem';
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,31 +31,25 @@ export async function POST(req: NextRequest) {
       email,
       password,
       name,
-      role: 'free', // Default role is free
-      points: INITIAL_POINTS, // Set initial points explicitly
+      role: 'user', // Default role is user
+      points: 0, // No initial points - points will be added after subscription
       pointsLastUpdated: new Date(),
       pointsUsedThisMonth: 0,
+      subscriptionStatus: 'inactive', // Default subscription status
     });
-
-    // Explicitly set points before saving to ensure it's set
-    user.set('points', INITIAL_POINTS);
     
     // Save the user to the database
     try {
       await user.save();
       
-      // Verify the user was saved with points
+      // Verify the user was saved correctly
       const savedUser = await User.findOne({ email });
-      console.log('User created with points (verification):', {
+      console.log('User created:', {
         userId: savedUser?._id.toString(),
         points: savedUser?.points,
-        initial: INITIAL_POINTS,
-        userHasPoints: savedUser?.points === INITIAL_POINTS
+        subscriptionStatus: savedUser?.subscriptionStatus
       });
       
-      if (!savedUser || savedUser.points !== INITIAL_POINTS) {
-        console.error('Points verification failed. User was not saved with correct points!');
-      }
     } catch (saveError) {
       console.error('Error saving user:', saveError);
       return NextResponse.json(

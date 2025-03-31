@@ -13,10 +13,11 @@ export interface IUser extends mongoose.Document {
   startReason?: string;
   struggles?: string;
   preferredTeacher?: 'hiroshi' | 'reiko' | 'iwao' | 'taro';
-  role: 'free' | 'paid' | 'admin';
+  role: 'user' | 'admin';
   points: number;
   pointsLastUpdated: Date;
   pointsUsedThisMonth: number;
+  subscriptionStatus: 'inactive' | 'active' | 'cancelled';
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;
@@ -73,8 +74,8 @@ const UserSchema = new Schema<IUser>(
     },
     role: {
       type: String,
-      enum: ['free', 'paid', 'admin'],
-      default: 'free',
+      enum: ['user', 'admin'],
+      default: 'user',
     },
     points: {
       type: Number,
@@ -92,6 +93,11 @@ const UserSchema = new Schema<IUser>(
       default: 0,
       required: true,
       min: 0
+    },
+    subscriptionStatus: {
+      type: String,
+      enum: ['inactive', 'active', 'cancelled'],
+      default: 'inactive',
     },
   },
   {

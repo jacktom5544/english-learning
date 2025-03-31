@@ -20,6 +20,7 @@ alwaysApply: true
 Next.js 15.2.2(latest Version) with App Router
 TypeScript with strict typing
 MongoDB for database
+For Subscription, use Stripe 
 Database Name is english-learning(alreday created)
 Tailwind CSS
 Make modern looking website
@@ -29,4 +30,5 @@ The website should be fully Responsive(PC, Tablet and Smartphone)
 Since this service is for Japanese, UI should be in Japanese
 Use Deepseek chat for AI generate contents
 Make sure the code you generate is secure and follows the best practice
+Make Re-usable component as much as possible(Don't scatter similar codes everywhere)
 Don't edit content of .env.local

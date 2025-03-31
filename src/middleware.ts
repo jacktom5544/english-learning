@@ -12,10 +12,31 @@ export async function middleware(request: NextRequest) {
     '/quiz',
     '/vocabulary',
     '/writing',
+    '/subscribe',
   ];
   
   // Define paths that are only accessible to logged out users
   const authRoutes = ['/login', '/register'];
+
+  // Define admin-only paths
+  const adminPaths = ['/admin'];
+  
+  // Define debug paths that should bypass all checks
+  const debugPaths = [
+    '/debug-session',
+    '/fix-admin-role',
+    '/test-admin',
+  ];
+  
+  // Check if the current path is a debug path
+  const isDebugPath = debugPaths.some(path => 
+    pathname === path || pathname.startsWith(`${path}/`)
+  );
+  
+  // Skip all checks for debug paths
+  if (isDebugPath) {
+    return NextResponse.next();
+  }
   
   // Check if the current path requires authentication
   const isProtectedPath = protectedPaths.some(path => 
@@ -26,9 +47,24 @@ export async function middleware(request: NextRequest) {
   const isAuthRoute = authRoutes.some(route => 
     pathname === route || pathname.startsWith(`${route}/`)
   );
+
+  // Check if the current path is admin-only
+  const isAdminPath = adminPaths.some(path => 
+    pathname === path || pathname.startsWith(`${path}/`)
+  );
   
   // Get the token
   const token = await getToken({ req: request });
+  
+  // TEMPORARY FIX - Print token details for debugging
+  if (isAdminPath && token) {
+    console.log('Admin path access attempt:', {
+      path: pathname,
+      tokenExists: !!token,
+      tokenRole: token.role,
+      tokenId: token.id,
+    });
+  }
   
   // Redirect logic for protected paths
   if (isProtectedPath && !token) {
@@ -43,6 +79,12 @@ export async function middleware(request: NextRequest) {
     // Redirect authenticated users to dashboard
     return NextResponse.redirect(new URL('/dashboard', request.url));
   }
+
+  // Redirect logic for admin paths
+  if (isAdminPath && (!token || token.role !== 'admin')) {
+    // Redirect non-admin users to dashboard
+    return NextResponse.redirect(new URL('/dashboard', request.url));
+  }
   
   return NextResponse.next();
 }
@@ -55,7 +97,12 @@ export const config = {
     '/quiz/:path*',
     '/vocabulary/:path*',
     '/writing/:path*',
+    '/admin/:path*',
+    '/subscribe/:path*',
     '/login',
     '/register',
+    '/debug-session',
+    '/fix-admin-role',
+    '/test-admin',
   ],
 }; 

@@ -4,6 +4,41 @@ import { connectToDatabase } from '@/lib/db';
 import User from '@/models/User';
 import { safeLog, safeError } from './utils';
 
+// Define subscription status type to match what's used in stripe.ts
+type SubscriptionStatus = 'active' | 'cancelled' | 'inactive';
+
+// Extend the built-in session types
+declare module "next-auth" {
+  interface User {
+    id: string;
+    role: string;
+    points: number;
+    subscriptionStatus: SubscriptionStatus;
+  }
+  
+  interface Session {
+    user: {
+      id: string;
+      name?: string | null;
+      email?: string | null;
+      image?: string | null;
+      role: string;
+      points: number;
+      subscriptionStatus: SubscriptionStatus;
+    }
+  }
+}
+
+// Extend JWT type
+declare module "next-auth/jwt" {
+  interface JWT {
+    id: string;
+    role: string;
+    points: number;
+    subscriptionStatus: SubscriptionStatus;
+  }
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -43,7 +78,8 @@ export const authOptions: NextAuthOptions = {
             name: user.name,
             image: user.image,
             role: user.role,
-            points: user.points
+            points: user.points,
+            subscriptionStatus: user.subscriptionStatus as SubscriptionStatus
           };
         } catch (error) {
           safeError('Error in authorize function', error);
@@ -64,18 +100,23 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         token.role = user.role;
         token.points = user.points;
+        token.subscriptionStatus = user.subscriptionStatus;
         
-        // If points are missing, try to fetch them from the database
-        if (token.points === undefined) {
+        // If points or subscription status are missing, try to fetch them from the database
+        if (token.points === undefined || token.subscriptionStatus === undefined) {
           try {
             await connectToDatabase();
             const dbUser = await User.findById(user.id);
             if (dbUser) {
               token.points = dbUser.points;
-              console.log('Points fetched from database for token', { points: dbUser.points });
+              token.subscriptionStatus = dbUser.subscriptionStatus as SubscriptionStatus;
+              console.log('User data fetched from database for token', { 
+                points: dbUser.points,
+                subscriptionStatus: dbUser.subscriptionStatus 
+              });
             }
           } catch (error) {
-            console.error('Error fetching user points for token', error);
+            console.error('Error fetching user data for token', error);
           }
         }
       }
@@ -87,18 +128,23 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.id as string;
         session.user.role = token.role as string;
         session.user.points = token.points as number;
+        session.user.subscriptionStatus = token.subscriptionStatus;
         
-        // If points are missing, try to fetch them from the database
-        if (session.user.points === undefined) {
+        // If points or subscription status are missing, try to fetch them from the database
+        if (session.user.points === undefined || session.user.subscriptionStatus === undefined) {
           try {
             await connectToDatabase();
             const dbUser = await User.findById(session.user.id);
             if (dbUser) {
               session.user.points = dbUser.points;
-              console.log('Points fetched from database for session', { points: dbUser.points });
+              session.user.subscriptionStatus = dbUser.subscriptionStatus as SubscriptionStatus;
+              console.log('User data fetched from database for session', { 
+                points: dbUser.points,
+                subscriptionStatus: dbUser.subscriptionStatus 
+              });
             }
           } catch (error) {
-            console.error('Error fetching user points for session', error);
+            console.error('Error fetching user data for session', error);
           }
         }
       }
