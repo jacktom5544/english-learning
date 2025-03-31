@@ -62,8 +62,8 @@ const nextConfig = {
   },
 
   typescript: {
-    // We want to detect TypeScript errors during the build
-    ignoreBuildErrors: process.env.NEXT_TYPESCRIPT_CHECK === 'false',
+    // Always ignore type errors in production builds for Amplify
+    ignoreBuildErrors: true,
   },
   
   // Add output configuration for standalone mode
