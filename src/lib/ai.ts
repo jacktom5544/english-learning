@@ -13,11 +13,10 @@ export type AICompletionOptions = {
   maxTokens?: number;
   temperature?: number;
   systemPrompt?: string;
-  timeout?: number; // Add timeout option
 };
 
 /**
- * Generate a response from DeepSeek AI with improved timeout handling and streaming
+ * Generate a response from DeepSeek AI
  * @param messages - The conversation history
  * @param options - Options for the completion
  * @returns The AI-generated response
@@ -29,24 +28,13 @@ export async function generateAIResponse(
   const { 
     maxTokens = 500, 
     temperature = 0.7,
-    systemPrompt = 'You are a helpful assistant specialized in English language learning for Japanese users. Keep responses clear and concise.',
-    timeout = 25000, // Default to 25 seconds
+    systemPrompt = 'You are a helpful assistant specialized in English language learning for Japanese users. Keep responses clear and concise.'
   } = options;
 
   // Ensure there's a system message at the beginning if not already present
   const formattedMessages = messages[0]?.role === 'system' 
     ? messages 
     : [{ role: 'system' as MessageRole, content: systemPrompt }, ...messages];
-
-  // Create a promise that will reject after the timeout
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    const timeoutId = setTimeout(() => {
-      reject(new Error('AI response timeout'));
-    }, timeout);
-    
-    // Clean up the timeout if the promise is resolved before timeout
-    timeoutPromise.finally(() => clearTimeout(timeoutId));
-  });
 
   try {
     console.log('Sending request to DeepSeek API...');
@@ -56,37 +44,24 @@ export async function generateAIResponse(
       throw new Error('AI APIクライアントの初期化エラー');
     }
     
-    // Use streaming for more reliable responses
-    const streamResponse = await Promise.race([
-      deepseek.chat.completions.create({
-        model: 'deepseek-chat', // Always use deepseek-chat, not the more expensive reasoner
-        messages: formattedMessages as any, // Type assertion to avoid type conflicts
-        max_tokens: maxTokens,
-        temperature: temperature,
-        stream: true, // Enable streaming
-      }),
-      timeoutPromise
-    ]);
+    const response = await deepseek.chat.completions.create({
+      model: 'deepseek-chat', // Always use deepseek-chat, not the more expensive reasoner
+      messages: formattedMessages as any, // Type assertion to avoid type conflicts
+      max_tokens: maxTokens,
+      temperature: temperature,
+    });
 
-    // Collect the streamed response
-    let fullResponse = '';
-    for await (const chunk of streamResponse) {
-      const content = chunk.choices[0]?.delta?.content || '';
-      fullResponse += content;
+    if (!response || !response.choices || response.choices.length === 0 || !response.choices[0].message) {
+      console.error('DeepSeek API returned an invalid response:', response);
+      throw new Error('無効なAIレスポンスを受け取りました');
     }
 
-    if (!fullResponse) {
-      console.error('DeepSeek API returned an empty response');
-      throw new Error('AIからの応答が空でした');
-    }
-
-    return fullResponse;
+    return response.choices[0].message.content || '';
   } catch (error: any) {
     console.error('DeepSeek AI error:', error);
     
     // Check if it's a timeout error
-    if (error.message && (error.message.includes('timeout') || error.name === 'AbortError')) {
-      console.error('AI request timed out after', timeout, 'ms');
+    if (error.message && error.message.includes('timeout')) {
       throw new Error('AIリクエストがタイムアウトしました。しばらくしてからもう一度お試しください。');
     }
     
