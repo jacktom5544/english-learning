@@ -19,9 +19,9 @@ const nextConfig = {
       config.resolve.alias = {
         ...config.resolve.alias,
         '@mapbox/node-pre-gyp/lib/util/nw-pre-gyp/index.html': false,
-        // Add aliases for missing modules
-        '@/lib/teachers': require.resolve('./src/lib/emptyModule.js'),
-        '@/lib/pointSystem': require.resolve('./src/lib/emptyModule.js'),
+        // DO NOT alias these modules as they exist in the project
+        // '@/lib/teachers': require.resolve('./src/lib/emptyModule.js'),
+        // '@/lib/pointSystem': require.resolve('./src/lib/emptyModule.js'),
         '@tailwindcss/postcss': false
       };
       

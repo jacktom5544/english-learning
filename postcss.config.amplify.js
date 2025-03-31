@@ -1,6 +1,7 @@
+// CommonJS format for Amplify environment
 module.exports = {
   plugins: {
-    '@tailwindcss/postcss': {},
-    autoprefixer: {},
+    'autoprefixer': {},
+    '@tailwindcss/postcss': {}
   }
 }; 

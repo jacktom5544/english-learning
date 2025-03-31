@@ -3,7 +3,8 @@ frontend:
   phases:
     preBuild:
       commands:
-        - npm ci
+        - npm install
+        - npm install autoprefixer @tailwindcss/postcss -g
     build:
       commands:
         # Ensure environment variables are in .env.local which Next.js reads by default
