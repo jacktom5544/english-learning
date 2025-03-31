@@ -3,7 +3,9 @@ const nextConfig = {
   // Basic configuration
   experimental: {
     serverActions: {
-      allowedOrigins: ["localhost:3000", "localhost:3001", "localhost:3002", "localhost:3003", "localhost:3004", "localhost:3005"]
+      allowedOrigins: ["localhost:3000", "localhost:3001", "localhost:3002", "localhost:3003", "localhost:3004", "localhost:3005", 
+        // Add Amplify domains
+        "*.amplifyapp.com"]
     },
   },
   // Increase build timeout
@@ -59,6 +61,9 @@ const nextConfig = {
     // your project has type errors.
     ignoreBuildErrors: true,
   },
+  
+  // Add output configuration for standalone mode
+  output: 'standalone',
 }
 
 module.exports = nextConfig; 
