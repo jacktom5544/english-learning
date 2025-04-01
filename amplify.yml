@@ -115,17 +115,32 @@ frontend:
         - |
           if [ $? -ne 0 ]; then
             echo "Custom build failed, trying direct Next.js build with flag overrides..."
-            NODE_PATH=./src npx next build --no-lint --no-typescript
+            NODE_PATH=./src npx next build --no-lint
           fi
         
         # Verify build output
         - echo "Verifying build output..."
-        - ls -la .next/standalone/ || true
+        - ls -la .next/ || true
+        - |
+          if [ ! -d ".next/standalone" ]; then
+            echo "Standalone directory not found, creating required structure..."
+            mkdir -p .next/standalone
+            cp -r .next/server .next/standalone/
+            cp -r public .next/standalone/
+            cp next.config.js .next/standalone/
+            # Create .next/standalone/.next/static directory and copy static files
+            mkdir -p .next/standalone/.next/static
+            cp -r .next/static .next/standalone/.next/
+          fi
+        - echo "Final output structure:"
+        - find .next/standalone -type d | sort
   artifacts:
     # Point to the standalone output directory
-    baseDirectory: ".next"
+    baseDirectory: ".next/standalone"
     files:
       - "**/*"
+      - ".next/static/**/*"
+      - "public/**/*"
   cache:
     paths:
       - node_modules/**/*

@@ -1,10 +1,11 @@
 /** @type {import('next').NextConfig} */
 const path = require('path');
+
 const nextConfig = {
   // Use standalone output for Amplify deployment
   output: 'standalone',
   
-  // Disable TypeScript checking (as a precaution)
+  // Disable TypeScript checking during build
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -17,7 +18,7 @@ const nextConfig = {
   // Disable source maps in production
   productionBrowserSourceMaps: false,
   
-  // Increase build timeout
+  // Increase timeout for static generation
   staticPageGenerationTimeout: 180,
   
   // Basic experimental features
@@ -27,30 +28,30 @@ const nextConfig = {
     },
   },
   
-  // Simplified webpack config
-  webpack: (config, { isServer }) => {
-    // Add aliases
+  // Configure webpack
+  webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,
       '@': path.resolve(__dirname, './src'),
     };
-
-    // Set fallbacks for server modules in client builds
-    if (!isServer) {
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        fs: false,
-        net: false,
-        tls: false,
-        dns: false,
-        child_process: false,
-        path: false,
-        os: false,
-        crypto: false,
-      };
+    
+    // Add fallbacks for node modules
+    if (!config.resolve.fallback) {
+      config.resolve.fallback = {};
     }
+    
+    Object.assign(config.resolve.fallback, {
+      fs: false,
+      net: false,
+      tls: false,
+      crypto: false,
+      os: false,
+      path: false,
+      stream: false,
+    });
     
     return config;
   },
 };
+
 module.exports = nextConfig; 

@@ -71,8 +71,8 @@ try {
   // Use cross-platform compatible method to set environment variables
   const isWindows = process.platform === 'win32';
   const buildCommand = isWindows 
-    ? 'npx next build --no-lint --no-typescript' 
-    : 'NODE_PATH=./src npx next build --no-lint --no-typescript';
+    ? 'npx next build --no-lint' 
+    : 'NODE_PATH=./src npx next build --no-lint';
   
   // Set NODE_PATH in the environment object instead of command prefix for Windows
   const env = { ...process.env, NEXT_TELEMETRY_DISABLED: '1' };
