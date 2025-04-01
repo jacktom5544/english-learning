@@ -6,18 +6,6 @@ import { safeLog, safeError } from './utils';
 import { NEXTAUTH_SECRET } from './env';
 import { Model } from 'mongoose';
 
-// As a fallback, try to load from the JavaScript module if TypeScript module fails
-let secretFromJS = '';
-try {
-  // Dynamic import for JavaScript module (no TypeScript)
-  const jsEnv = require('../../env.js');
-  if (jsEnv && jsEnv.NEXTAUTH_SECRET) {
-    secretFromJS = jsEnv.NEXTAUTH_SECRET;
-  }
-} catch (error) {
-  console.warn('Could not load JavaScript env module, using TypeScript module');
-}
-
 // Define subscription status type to match what's used in stripe.ts
 type SubscriptionStatus = 'active' | 'cancelled' | 'inactive';
 
@@ -178,7 +166,7 @@ export const authOptions: NextAuthOptions = {
     signIn: '/login',
     error: '/login',
   },
-  secret: NEXTAUTH_SECRET || secretFromJS || process.env.NEXTAUTH_SECRET,
+  secret: NEXTAUTH_SECRET,
   debug: process.env.NODE_ENV === 'development',
   logger: {
     error(code, ...message) {

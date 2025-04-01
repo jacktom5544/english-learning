@@ -1,17 +1,17 @@
 /** @type {import('next').NextConfig} */
 module.exports = {
-  // Disable TypeScript checking
+  // Use standalone output for Amplify deployment
+  output: 'standalone',
+  
+  // Disable TypeScript checking (as a precaution)
   typescript: {
     ignoreBuildErrors: true,
   },
   
-  // Disable ESLint
+  // Disable ESLint during build
   eslint: {
     ignoreDuringBuilds: true,
   },
-  
-  // Use standalone output
-  output: 'standalone',
   
   // Disable source maps in production
   productionBrowserSourceMaps: false,
@@ -26,7 +26,7 @@ module.exports = {
     },
   },
   
-  // Simplify webpack config
+  // Simplified webpack config
   webpack: (config, { isServer }) => {
     // Add aliases
     config.resolve.alias = {

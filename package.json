@@ -43,6 +43,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@next/swc-linux-x64-gnu": "^15.2.4",
     "@types/bcrypt": "^5.0.2",
     "@types/node": "^20.17.28",
     "@types/react": "^19.0.12",

@@ -21,23 +21,26 @@ frontend:
           echo "NODE_ENV=production" >> .env.production
           echo ".env.production file created:"
           cat .env.production | grep -v -E "SECRET|KEY|URI" # Don't print sensitive values
-        # Make the build script executable
-        - chmod +x build.js
     build:
       commands:
-        # Use our custom build script
-        - node build.js
+        # Run the standard Next.js build (Amplify will handle NODE_ENV)
+        - npm run build
   artifacts:
-    baseDirectory: .next
+    # Point to the standalone output directory
+    baseDirectory: ".next/standalone"
     files:
-      - '**/*'
+      - "**/*"
+      - "public/**/*"
+      - ".next/static/**/*"
   cache:
     paths:
       - node_modules/**/*
       - .next/cache/**/*
 
-# Configuration to pass environment variables to Next.js SSR functions
+# Ensure platform is set correctly for Next.js SSR
 platform: "web-compute"
+
+# Keep the environment variable list for SSR functions
 nextjsSSR:
   environments:
     - MONGODB_URI
