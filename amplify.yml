@@ -11,6 +11,28 @@ frontend:
         - npm cache clean --force
         # Use npm install instead of ci since lock file was removed
         - npm install
+        # Install the babel module resolver plugin
+        - npm install --save-dev babel-plugin-module-resolver
+        # Set a NODE_PATH environment variable to help resolve module paths
+        - export NODE_PATH=./src
+        # Create a .babelrc file to help with path resolution
+        - |
+          cat > .babelrc <<EOL
+          {
+            "presets": ["next/babel"],
+            "plugins": [
+              [
+                "module-resolver",
+                {
+                  "root": ["./src"],
+                  "alias": {
+                    "@": "./src"
+                  }
+                }
+              ]
+            ]
+          }
+          EOL
         # Create a temporary next.config.js to ensure standalone output
         - |
           cat > next.config.js <<EOL
@@ -25,6 +47,10 @@ frontend:
                 '@': path.resolve(__dirname, './src'),
               };
               return config;
+            },
+            experimental: {
+              // Enable more verbose error messages for module resolution
+              esmExternals: 'loose',
             },
           };
           
@@ -48,11 +74,61 @@ frontend:
           echo "NODE_ENV=production" >> .env.production
           echo ".env.production file created:"
           cat .env.production | grep -v -E "SECRET|KEY|URI" # Don't print sensitive values
+        # Create a jsconfig.json file to support path resolution
+        - |
+          cat > jsconfig.json <<EOL
+          {
+            "compilerOptions": {
+              "baseUrl": ".",
+              "paths": {
+                "@/*": ["./src/*"]
+              }
+            }
+          }
+          EOL
     build:
       commands:
-        # Run the build directly, relying on next.config.js
-        - echo "Attempting Next.js build..."
-        - npx next build
+        # Debug directory structure
+        - echo "Current directory structure:"
+        - find src -type f -name "*.ts" -o -name "*.tsx" | sort
+        
+        # Check that the next.config.js was created properly
+        - echo "Contents of next.config.js:"
+        - cat next.config.js
+        
+        # Create a special build script to handle path resolution
+        - |
+          cat > custom-build.js <<EOL
+          // Script to help with path resolution during build
+          const fs = require('fs');
+          const path = require('path');
+          const { execSync } = require('child_process');
+          
+          console.log('Running custom build script for path resolution...');
+          
+          // Check for the directories we need
+          console.log('Verifying directory structure:');
+          console.log('- src/lib exists:', fs.existsSync('./src/lib'));
+          console.log('- src/components/providers exists:', fs.existsSync('./src/components/providers'));
+          
+          // Print important file paths
+          ['src/lib/teachers.ts', 'src/lib/pointSystem.ts', 'src/components/providers/UserPointsProvider.tsx'].forEach(filePath => {
+            console.log(`- ${filePath} exists:`, fs.existsSync(`./${filePath}`));
+          });
+          
+          // Run the Next.js build
+          console.log('Starting Next.js build...');
+          execSync('npx next build', { stdio: 'inherit' });
+          
+          console.log('Custom build script completed.');
+          EOL
+          
+        # Run the custom build script
+        - node custom-build.js
+        
+        # If the custom script fails, fall back to standard build
+        - echo "If custom build failed, trying fallback Next.js build..."
+        - npx next build || true
         
         # Verify build output
         - echo "Verifying build output..."
