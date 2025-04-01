@@ -32,7 +32,7 @@ frontend:
     build:
       commands:
         # Run the build with TypeScript checks disabled
-        - NEXT_TYPESCRIPT_CHECK=false npx next build --no-lint --skip-building-api
+        - NEXT_TYPESCRIPT_CHECK=false npx next build --no-lint
   artifacts:
     # Point to the standalone output directory
     baseDirectory: ".next/standalone"
