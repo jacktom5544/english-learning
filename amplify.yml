@@ -1,10 +1,17 @@
 version: 1
+# Specify Node.js version
+nodejs: 20
 frontend:
   phases:
     preBuild:
       commands:
-        # Install dependencies
+        # Clean slate install
+        - rm -rf node_modules
+        - rm -f package-lock.json
+        - npm cache clean --force
         - npm ci
+        # Attempt to trigger SWC patching
+        - npx --no-install next info
         # Generate .env file from Amplify environment variables
         - |
           echo "Creating .env file from Amplify environment variables"
