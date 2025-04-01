@@ -75,32 +75,15 @@ frontend:
           cat .env.production | grep -v -E "SECRET|KEY|URI" # Don't print sensitive values
     build:
       commands:
-        # Run the build with TypeScript checks disabled
-        - |
-          # Create a dummy module to fix missing imports if needed
-          mkdir -p src/lib
-          mkdir -p src/components/providers
-          
-          # Run the Next.js build
-          NEXT_TYPESCRIPT_CHECK=false NEXT_TELEMETRY_DISABLED=1 npx next build || true
-          
-          # Check if the build succeeded (look for .next directory)
-          if [ -d .next ]; then
-            echo "Build completed or partially completed"
-          else
-            echo "Build failed completely"
-            exit 1
-          fi
-        # Ensure the server files exist and copy them if needed
-        - ls -la .next/ || true
-        - |
-          if [ ! -d .next/standalone ]; then
-            echo "Creating standalone directory and copying server files"
-            mkdir -p .next/standalone
-            cp -r .next/server .next/standalone/
-            cp .next/required-server-files.json .next/standalone/ || echo "No required-server-files.json found"
-            cp next.config.js .next/standalone/
-          fi
+        # Run the build with TypeScript checks disabled and telemetry disabled
+        - echo "Attempting Next.js build..."
+        - NEXT_TYPESCRIPT_CHECK=false NEXT_TELEMETRY_DISABLED=1 npx next build
+        
+        # Verify build output
+        - echo "Verifying build output..."
+        - ls -la .next/standalone/ # List contents for debugging
+        - test -f .next/standalone/required-server-files.json || (echo "required-server-files.json not found!" && exit 1)
+        - echo "Build output verified."
   artifacts:
     # Point to the standalone output directory
     baseDirectory: ".next/standalone"
