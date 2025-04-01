@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { safeLog, safeError } from './utils';
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/english-learning';
 
@@ -19,32 +20,50 @@ if (!cached.mongoose) {
 
 export async function connectToDatabase() {
   if (cached.mongoose.conn) {
-    console.log('Using existing mongoose connection');
+    safeLog('Using existing mongoose connection');
     return cached.mongoose.conn;
   }
 
   if (!cached.mongoose.promise) {
     const opts = {
       bufferCommands: false,
+      // Add connection options to improve reliability
+      serverSelectionTimeoutMS: 5000, // Timeout after 5 seconds
+      socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
+      family: 4, // Use IPv4, skip trying IPv6
+      maxPoolSize: 10, // Maintain up to 10 socket connections
     };
 
-    console.log('Connecting to MongoDB...', MONGODB_URI.substring(0, 20) + '...');
+    safeLog('Connecting to MongoDB...', MONGODB_URI.substring(0, 20) + '...');
 
     try {
+      // Clear any existing promise to ensure we get a fresh connection attempt
       cached.mongoose.promise = mongoose.connect(MONGODB_URI, opts);
     } catch (error) {
-      console.error('Error during mongoose.connect:', error);
+      safeError('Error during mongoose.connect:', error);
       cached.mongoose.promise = null;
       throw error;
     }
   }
 
   try {
-    console.log('Awaiting mongoose connection...');
-    cached.mongoose.conn = await cached.mongoose.promise;
-    console.log('MongoDB connection established successfully');
+    safeLog('Awaiting mongoose connection...');
+    // Add a timeout for the connection promise
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('MongoDB connection timeout - took longer than 10 seconds'));
+      }, 10000);
+    });
+    
+    // Race between connection and timeout
+    cached.mongoose.conn = await Promise.race([
+      cached.mongoose.promise,
+      timeoutPromise
+    ]);
+    
+    safeLog('MongoDB connection established successfully');
   } catch (error) {
-    console.error('Error while awaiting mongoose connection:', error);
+    safeError('Error while awaiting mongoose connection:', error);
     cached.mongoose.promise = null;
     throw error;
   }

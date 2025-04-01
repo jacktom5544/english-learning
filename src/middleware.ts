@@ -67,8 +67,8 @@ export async function middleware(request: NextRequest) {
   try {
     token = await getToken({ 
       req: request,
-      // Specify secret to improve security
-      secret: process.env.NEXTAUTH_SECRET 
+      // Use the same fallback as in auth.ts
+      secret: process.env.NEXTAUTH_SECRET || '291b0018d2327b4ba9cb49f24ce42ea4'
     });
   } catch (error) {
     console.error('Error in getToken middleware:', error);

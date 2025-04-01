@@ -161,7 +161,8 @@ export const authOptions: NextAuthOptions = {
     signIn: '/login',
     error: '/login',
   },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: process.env.NEXTAUTH_SECRET || 
+          '291b0018d2327b4ba9cb49f24ce42ea4', // Use the value from your environment variables
   debug: process.env.NODE_ENV === 'development',
   logger: {
     error(code, ...message) {
