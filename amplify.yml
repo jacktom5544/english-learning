@@ -27,28 +27,12 @@ frontend:
             typescript: {
               ignoreBuildErrors: true,
             },
-            webpack: (config, { isServer }) => {
+            webpack: (config) => {
               // Add aliases
               config.resolve.alias = {
                 ...config.resolve.alias,
                 '@': path.resolve(__dirname, './src'),
               };
-          
-              // Set fallbacks for server modules in client builds
-              if (!isServer) {
-                config.resolve.fallback = {
-                  ...config.resolve.fallback,
-                  fs: false,
-                  net: false,
-                  tls: false,
-                  dns: false,
-                  child_process: false,
-                  path: false,
-                  os: false,
-                  crypto: false,
-                };
-              }
-              
               return config;
             },
           };
@@ -75,9 +59,9 @@ frontend:
           cat .env.production | grep -v -E "SECRET|KEY|URI" # Don't print sensitive values
     build:
       commands:
-        # Run the build with TypeScript checks disabled and telemetry disabled
+        # Run the build directly, relying on next.config.js
         - echo "Attempting Next.js build..."
-        - NEXT_TYPESCRIPT_CHECK=false NEXT_TELEMETRY_DISABLED=1 npx next build
+        - npx next build
         
         # Verify build output
         - echo "Verifying build output..."
