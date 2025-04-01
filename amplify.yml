@@ -11,6 +11,7 @@ frontend:
         - npm cache clean --force
         # Use npm install instead of ci since lock file was removed
         - npm install
+        - npm install --save-dev typescript @types/react @types/react-dom
         # Set a NODE_PATH environment variable to help resolve module paths
         - export NODE_PATH=./src
         # Create a temporary next.config.js to ensure standalone output
@@ -64,63 +65,10 @@ frontend:
           EOL
     build:
       commands:
-        # Debug directory structure
         - echo "Current directory structure:"
         - find src -type f -name "*.ts" -o -name "*.tsx" | sort
-        
-        # Check that the next.config.js was created properly
         - echo "Contents of next.config.js:"
         - cat next.config.js
-        
-        # Create a special build script to handle path resolution
-        - |
-          cat > custom-build.js <<'EOL'
-          // Script to help with path resolution during build
-          const fs = require('fs');
-          const path = require('path');
-          const { execSync } = require('child_process');
-          
-          console.log('Running custom build script for path resolution...');
-          
-          // Check for the directories we need
-          console.log('Verifying directory structure:');
-          console.log('- src/lib exists:', fs.existsSync('./src/lib'));
-          console.log('- src/components/providers exists:', fs.existsSync('./src/components/providers'));
-          
-          // Print important file paths
-          ['src/lib/teachers.ts', 'src/lib/pointSystem.ts', 'src/components/providers/UserPointsProvider.tsx'].forEach(filePath => {
-            console.log(`- ${filePath} exists:`, fs.existsSync(`./${filePath}`));
-          });
-          
-          // Check if tsconfig.json exists and update it if needed
-          if (fs.existsSync('./tsconfig.json')) {
-            console.log('- tsconfig.json exists, ensuring paths are configured correctly');
-            const tsConfig = require('./tsconfig.json');
-            if (!tsConfig.compilerOptions.paths || !tsConfig.compilerOptions.paths['@/*']) {
-              console.log('  - Adding path aliases to tsconfig.json');
-              tsConfig.compilerOptions = tsConfig.compilerOptions || {};
-              tsConfig.compilerOptions.baseUrl = '.';
-              tsConfig.compilerOptions.paths = tsConfig.compilerOptions.paths || {};
-              tsConfig.compilerOptions.paths['@/*'] = ['./src/*'];
-              fs.writeFileSync('./tsconfig.json', JSON.stringify(tsConfig, null, 2));
-            }
-          }
-          
-          // Run the Next.js build with NODE_PATH explicitly set
-          console.log('Starting Next.js build...');
-          try {
-            execSync('NODE_PATH=./src npx next build', { 
-              stdio: 'inherit',
-              env: { ...process.env, NODE_PATH: './src' }
-            });
-            console.log('Custom build script completed successfully.');
-          } catch (error) {
-            console.error('Build failed:', error.message);
-            process.exit(1);
-          }
-          EOL
-          
-        # Run the custom build script
         - node custom-build.js
         
         # If the custom script fails, fall back to standard build

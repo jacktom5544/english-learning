@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
-module.exports = {
+const path = require('path');
+const nextConfig = {
   // Use standalone output for Amplify deployment
   output: 'standalone',
   
@@ -31,7 +32,7 @@ module.exports = {
     // Add aliases
     config.resolve.alias = {
       ...config.resolve.alias,
-      '@': require('path').resolve(__dirname, './src'),
+      '@': path.resolve(__dirname, './src'),
     };
 
     // Set fallbacks for server modules in client builds
@@ -51,4 +52,5 @@ module.exports = {
     
     return config;
   },
-}; 
+};
+module.exports = nextConfig; 
