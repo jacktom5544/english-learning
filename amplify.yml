@@ -11,6 +11,8 @@ frontend:
         - npm cache clean --force
         # Use npm install instead of ci since lock file was removed
         - npm install
+        # Install TypeScript dependencies explicitly
+        - npm install --no-save typescript @types/react @types/react-dom
         # Attempt to trigger SWC patching
         - npx --no-install next info
         # Generate .env file from Amplify environment variables
