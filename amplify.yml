@@ -9,7 +9,8 @@ frontend:
         - rm -rf node_modules
         - rm -f package-lock.json
         - npm cache clean --force
-        - npm ci
+        # Use npm install instead of ci since lock file was removed
+        - npm install
         # Attempt to trigger SWC patching
         - npx --no-install next info
         # Generate .env file from Amplify environment variables
