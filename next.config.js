@@ -5,10 +5,9 @@ const nextConfig = {
   // Use standalone output for Amplify deployment
   output: 'standalone',
   
-  // Completely disable TypeScript checking during build
+  // Relax type checking during build to allow deployment
   typescript: {
     ignoreBuildErrors: true,
-    tsconfigPath: "tsconfig.skip.json"
   },
   
   // Disable ESLint during build

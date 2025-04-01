@@ -5,121 +5,13 @@ frontend:
   phases:
     preBuild:
       commands:
-        # Clean slate install
-        - rm -rf node_modules
-        - rm -f package-lock.json
-        - npm cache clean --force
-        # Use npm install instead of ci since lock file was removed
-        - npm install
-        - npm install --save-dev typescript@latest @types/react@latest @types/react-dom@latest
-        # Set environment variables
-        - export NODE_PATH=./src
-        - export SKIP_TYPESCRIPT=1
-        - export NODE_ENV=production
-        # Create a minimal TypeScript config that skips all type checking
+        # Clean install dependencies
+        - npm ci
+        # Create environment variables file
         - |
-          cat > tsconfig.skip.json <<EOL
-          {
-            "compilerOptions": {
-              "target": "es5",
-              "lib": ["dom", "dom.iterable", "esnext"],
-              "allowJs": true,
-              "skipLibCheck": true,
-              "strict": false,
-              "noEmit": true,
-              "esModuleInterop": true,
-              "module": "esnext",
-              "moduleResolution": "node",
-              "resolveJsonModule": true,
-              "isolatedModules": true,
-              "jsx": "preserve",
-              "incremental": true,
-              "baseUrl": ".",
-              "paths": {
-                "@/*": ["./src/*"]
-              }
-            },
-            "include": [],
-            "exclude": ["**/*"]
-          }
-          EOL
-        # Create a regular tsconfig.json
-        - |
-          cat > tsconfig.json <<EOL
-          {
-            "compilerOptions": {
-              "target": "es5",
-              "lib": ["dom", "dom.iterable", "esnext"],
-              "allowJs": true,
-              "skipLibCheck": true,
-              "strict": false,
-              "noEmit": true,
-              "esModuleInterop": true,
-              "module": "esnext",
-              "moduleResolution": "node",
-              "resolveJsonModule": true,
-              "isolatedModules": true,
-              "jsx": "preserve",
-              "incremental": true,
-              "baseUrl": ".",
-              "paths": {
-                "@/*": ["./src/*"]
-              }
-            },
-            "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-            "exclude": ["node_modules"]
-          }
-          EOL
-        # Create a stronger next.config.js that completely disables TS
-        - |
-          cat > next.config.js <<EOL
-          /** @type {import('next').NextConfig} */
-          const path = require('path');
-          
-          const nextConfig = {
-            output: 'standalone',
-            typescript: {
-              ignoreBuildErrors: true,
-              tsconfigPath: 'tsconfig.skip.json'
-            },
-            eslint: {
-              ignoreDuringBuilds: true
-            },
-            transpilePackages: [
-              'lucide-react',
-              'date-fns',
-              'recharts',
-              'react-icons',
-              '@stripe/stripe-js'
-            ],
-            webpack: (config) => {
-              config.resolve.alias = {
-                ...config.resolve.alias,
-                '@': path.resolve(__dirname, './src'),
-              };
-              if (!config.resolve.fallback) {
-                config.resolve.fallback = {};
-              }
-              Object.assign(config.resolve.fallback, {
-                fs: false,
-                net: false,
-                tls: false,
-                crypto: false,
-                os: false,
-                path: false,
-                stream: false,
-              });
-              return config;
-            }
-          };
-          
-          module.exports = nextConfig;
-          EOL
-        # Display installed Next.js info
-        - npx --no-install next info
-        # Generate .env file from Amplify environment variables
-        - |
-          echo "Creating .env file from Amplify environment variables"
+          echo "Creating .env.production file from Amplify environment variables"
+          echo "# IMPORTANT: Make sure all these variables are set in AWS Amplify Console environment variables" >> .env.production
+          echo "# If any of these are missing, your app may fail or have unexpected behavior" >> .env.production
           echo "NEXTAUTH_SECRET=$NEXTAUTH_SECRET" >> .env.production
           echo "MONGODB_URI=$MONGODB_URI" >> .env.production
           echo "CLOUDINARY_API_SECRET=$CLOUDINARY_API_SECRET" >> .env.production
@@ -133,135 +25,22 @@ frontend:
           echo "STRIPE_SECRET_KEY=$STRIPE_SECRET_KEY" >> .env.production
           echo "STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SECRET" >> .env.production
           echo "NODE_ENV=production" >> .env.production
-          echo ".env.production file created:"
-          cat .env.production | grep -v -E "SECRET|KEY|URI" # Don't print sensitive values
-        # Create a jsconfig.json file to support path resolution
-        - |
-          cat > jsconfig.json <<EOL
-          {
-            "compilerOptions": {
-              "baseUrl": ".",
-              "paths": {
-                "@/*": ["./src/*"]
-              }
-            }
-          }
-          EOL
+          echo ".env.production file created successfully"
+          echo "WARNING: Checking if critical environment variables are set:"
+          [ -z "$MONGODB_URI" ] && echo "⚠️ MONGODB_URI is not set! Application may not function correctly." || echo "✅ MONGODB_URI is set"
+          [ -z "$NEXTAUTH_SECRET" ] && echo "⚠️ NEXTAUTH_SECRET is not set! Authentication will not work properly." || echo "✅ NEXTAUTH_SECRET is set"
     build:
       commands:
-        - echo "Current directory structure:"
-        - find src -type f -name "*.ts" -o -name "*.tsx" | sort
-        - echo "Contents of next.config.js:"
-        - cat next.config.js
-        - echo "Running build process..."
-        - npm run build || true  # Run the regular build, but don't fail if it errors
-        - echo "Running Amplify deployment script..."
-        - node amplify-deploy.js  # Always run our deployment script
-        - echo "Verifying final output structure:"
-        - ls -la .next/standalone/ || echo "Standalone directory not found"
-        - find .next/standalone -type d | sort || echo "No directories found in standalone"
-        - |
-          # Verify trace files exist
-          echo "Checking for trace files..."
-          # Check in multiple locations
-          for trace_path in ".next/standalone/trace" ".next/standalone/.next/trace" ".next/standalone/.next/server/trace" ".next/trace" ".next/server/trace" ".next/standalone/server-trace.json"; do
-            if [ -f "$trace_path" ]; then
-              echo "✅ Found trace file at: $trace_path"
-              cat "$trace_path" | head -n 20 # Show the first few lines
-            elif [ -d "$trace_path" ]; then
-              echo "✅ Found trace directory at: $trace_path"
-              ls -la "$trace_path"
-            else
-              echo "❌ No trace file/directory at: $trace_path"
-            fi
-          done
-          
-          # If needed, manually create trace files in specific AWS Amplify expected locations
-          echo "Creating trace files in expected AWS Amplify locations..."
-          mkdir -p .next/standalone/.next/server
-          
-          # Create trace file in specific AWS expected location
-          cat > .next/standalone/.next/server/trace <<EOL
-          {
-            "version": 1,
-            "buildTraces": [
-              {
-                "name": "index",
-                "route": "/",
-                "pagePath": "app/page.js"
-              }
-            ],
-            "appDir": true,
-            "traceVersion": "15.2.4"
-          }
-          EOL
-          
-          echo "✅ Created trace file in .next/standalone/.next/server/trace"
-          
-          # Check if standalone directory exists and create key files
-          if [ ! -d ".next/standalone" ]; then
-            echo "❌ .next/standalone directory doesn't exist, creating it..."
-            mkdir -p .next/standalone/.next/server
-          fi
-          
-          # Check if required-server-files.json exists
-          if [ -f ".next/standalone/required-server-files.json" ]; then
-            echo "✅ required-server-files.json exists in .next/standalone/"
-          else
-            echo "❌ ERROR: required-server-files.json is missing!"
-            # Create it one last time if needed
-            cat > .next/standalone/required-server-files.json <<EOL
-            {
-              "version": 1,
-              "config": {
-                "configFile": true,
-                "experimental": {
-                  "appDir": true,
-                  "serverActions": true
-                },
-                "compress": true,
-                "poweredByHeader": true,
-                "output": "standalone"
-              },
-              "appDir": true,
-              "files": [
-                "server.js",
-                "next.config.js",
-                "package.json",
-                ".next/trace",
-                ".next/server/trace"
-              ],
-              "ignore": [
-                "node_modules"
-              ]
-            }
-            EOL
-            echo "✅ Created required-server-files.json manually"
-          fi
+        - echo "Building Next.js application"
+        - npm run build
   artifacts:
-    # Point to the standalone output directory
-    baseDirectory: .
+    baseDirectory: .next
     files:
-      - next.config.js
-      - package.json
-      - .next/standalone/**/*
-      - .next/static/**/*
-      - .next/trace/**/*
-      - .next/server/trace/**/*
-      - .next/server/trace
-      - .next/standalone/.next/server/trace
-      - .next/standalone/server/trace
-      - .next/standalone/server-trace.json
-      - .next/standalone/trace/**/*
-      - server.js
-    discard-paths: no
+      - '**/*'
   cache:
     paths:
       - node_modules/**/*
       - .next/cache/**/*
-
-# Ensure platform is set correctly for Next.js SSR
-platform: "web-compute"
 
 # Keep the environment variable list for SSR functions
 nextjsSSR:
@@ -270,7 +49,6 @@ nextjsSSR:
     - NEXTAUTH_SECRET
     - NEXTAUTH_URL
     - STRIPE_SECRET_KEY
-    - STRIPE_PUBLISHABLE_KEY
     - STRIPE_WEBHOOK_SECRET
     - NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
     - DEEPSEEK_API_KEY
