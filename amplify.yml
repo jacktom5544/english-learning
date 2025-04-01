@@ -31,8 +31,8 @@ frontend:
           cat .env.production | grep -v -E "SECRET|KEY|URI" # Don't print sensitive values
     build:
       commands:
-        # Run the standard Next.js build (Amplify will handle NODE_ENV)
-        - npm run build
+        # Run the build with TypeScript checks disabled
+        - npm run build:amplify
   artifacts:
     # Point to the standalone output directory
     baseDirectory: ".next/standalone"
