@@ -31,11 +31,9 @@ frontend:
           echo "WARNING: Checking if critical environment variables are set:"
           [ -z "$MONGODB_URI" ] && echo "⚠️ MONGODB_URI is not set! Application may not function correctly." || echo "✅ MONGODB_URI is set"
           [ -z "$NEXTAUTH_SECRET" ] && echo "⚠️ NEXTAUTH_SECRET is not set! Authentication will not work properly." || echo "✅ NEXTAUTH_SECRET is set"
-    build:
-      commands:
-        - echo "Building Next.js application"
-        # Use build command with TypeScript error handling
-        - npm run build || (echo "Build failed with TypeScript errors. Creating tsconfig.build.json to bypass strict checking" && cat > tsconfig.build.json <<EOL
+        # Create fallback tsconfig in advance to avoid YAML parsing issues
+        - |
+          cat > tsconfig.build.json <<EOL
           {
             "compilerOptions": {
               "target": "es5",
@@ -65,7 +63,11 @@ frontend:
             "exclude": ["node_modules"]
           }
           EOL
-          && NEXT_TYPESCRIPT_BYPASS_CHECKING=1 npm run build)
+    build:
+      commands:
+        - echo "Building Next.js application"
+        # Try normal build first, fall back to bypass checking if it fails
+        - npm run build || NEXT_TYPESCRIPT_BYPASS_CHECKING=1 npm run build
   artifacts:
     baseDirectory: .next
     files:
