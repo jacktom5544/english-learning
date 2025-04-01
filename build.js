@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 
-// Custom build script for AWS Amplify to handle TypeScript issues
+// Custom build script for AWS Amplify
 const { execSync } = require('child_process');
 const fs = require('fs');
-const path = require('path');
 
 console.log('Starting custom build process...');
 
@@ -17,7 +16,10 @@ try {
       if (match) {
         const key = match[1].trim();
         const value = match[2].trim();
-        process.env[key] = value;
+        // Set environment variable only if not already set by Amplify
+        if (process.env[key] === undefined) {
+          process.env[key] = value;
+        }
       }
     });
   }
@@ -25,32 +27,45 @@ try {
   console.warn('Error loading .env.production:', error.message);
 }
 
-// Ensure critical environment variables are set
+// Verify critical environment variables
 ['NEXTAUTH_SECRET', 'MONGODB_URI', 'NEXTAUTH_URL'].forEach(key => {
   if (!process.env[key]) {
-    console.warn(`WARNING: Environment variable ${key} is not set!`);
+    console.error(`ERROR: Environment variable ${key} is not set! Build might fail.`);
   } else {
-    console.log(`Environment variable ${key} is set`);
+    console.log(`Environment variable ${key} is set.`);
   }
 });
 
-// Run the build
+// Run the standard Next.js build
 try {
-  console.log('Building Next.js application...');
+  console.log('Building Next.js application (with types verification)...');
   
-  // Build with TypeScript checks disabled
+  // Use npx to ensure the correct Next.js version is used
   execSync('npx --no-install next build', {
     env: {
-      ...process.env,
-      NEXT_TELEMETRY_DISABLED: '1',
-      NEXT_TYPESCRIPT_CHECK: 'false',
-      NODE_OPTIONS: '--max_old_space_size=4096'
+      ...process.env, // Pass existing environment variables
+      NODE_OPTIONS: '--max_old_space_size=4096' // Increase memory limit
     },
-    stdio: 'inherit'
+    stdio: 'inherit' // Show build output directly
   });
   
   console.log('Build completed successfully!');
 } catch (error) {
   console.error('Build failed:', error.message);
-  process.exit(1);
+  // Optionally, try building again while ignoring TypeScript errors as a fallback
+  console.log('Attempting build again, ignoring TypeScript errors...');
+  try {
+    execSync('npx --no-install next build', {
+      env: {
+        ...process.env,
+        NEXT_TYPESCRIPT_CHECK: 'false',
+        NODE_OPTIONS: '--max_old_space_size=4096'
+      },
+      stdio: 'inherit'
+    });
+    console.log('Fallback build ignoring TypeScript errors completed successfully!');
+  } catch (fallbackError) {
+    console.error('Fallback build also failed:', fallbackError.message);
+    process.exit(1);
+  }
 } 

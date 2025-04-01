@@ -1,9 +1,10 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { connectToDatabase } from '@/lib/db';
-import User from '@/models/User';
+import User, { IUser } from '@/models/User';
 import { safeLog, safeError } from './utils';
 import { NEXTAUTH_SECRET } from './env';
+import { Model } from 'mongoose';
 
 // As a fallback, try to load from the JavaScript module if TypeScript module fails
 let secretFromJS = '';
@@ -52,6 +53,9 @@ declare module "next-auth/jwt" {
   }
 }
 
+// Cast the User model to the correct type
+const UserModel = User as Model<IUser>;
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -69,7 +73,7 @@ export const authOptions: NextAuthOptions = {
         try {
           await connectToDatabase();
           
-          const user = await User.findOne({ email: credentials.email });
+          const user = await UserModel.findOne({ email: credentials.email });
           
           if (!user) {
             safeLog('Login attempt with non-existent email', { email: credentials.email });
@@ -121,7 +125,7 @@ export const authOptions: NextAuthOptions = {
           if (token.points === undefined || token.subscriptionStatus === undefined) {
             try {
               await connectToDatabase();
-              const dbUser = await User.findById(user.id);
+              const dbUser = await UserModel.findById(user.id);
               if (dbUser) {
                 token.points = dbUser.points;
                 token.subscriptionStatus = dbUser.subscriptionStatus as SubscriptionStatus;
@@ -151,7 +155,7 @@ export const authOptions: NextAuthOptions = {
           if (session.user.points === undefined || session.user.subscriptionStatus === undefined) {
             try {
               await connectToDatabase();
-              const dbUser = await User.findById(session.user.id);
+              const dbUser = await UserModel.findById(session.user.id);
               if (dbUser) {
                 session.user.points = dbUser.points;
                 session.user.subscriptionStatus = dbUser.subscriptionStatus as SubscriptionStatus;
