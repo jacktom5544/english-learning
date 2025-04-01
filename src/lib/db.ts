@@ -1,10 +1,9 @@
 import mongoose from 'mongoose';
 import { safeLog, safeError } from './utils';
-
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/english-learning';
+import { MONGODB_URI } from './env';
 
 if (!MONGODB_URI) {
-  throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
+  throw new Error('Please define the MONGODB_URI environment variable');
 }
 
 /**

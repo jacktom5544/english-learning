@@ -3,6 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { connectToDatabase } from '@/lib/db';
 import User from '@/models/User';
 import { safeLog, safeError } from './utils';
+import { NEXTAUTH_SECRET } from './env';
 
 // Define subscription status type to match what's used in stripe.ts
 type SubscriptionStatus = 'active' | 'cancelled' | 'inactive';
@@ -161,8 +162,7 @@ export const authOptions: NextAuthOptions = {
     signIn: '/login',
     error: '/login',
   },
-  secret: process.env.NEXTAUTH_SECRET || 
-          '291b0018d2327b4ba9cb49f24ce42ea4', // Use the value from your environment variables
+  secret: NEXTAUTH_SECRET,
   debug: process.env.NODE_ENV === 'development',
   logger: {
     error(code, ...message) {

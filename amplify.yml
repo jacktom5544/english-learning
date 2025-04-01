@@ -1,33 +1,42 @@
 version: 1
+backend:
+  phases:
+    build:
+      commands:
+        - '# Execute Amplify CLI with the helper script'
+        - amplifyPush --simple
 frontend:
   phases:
     preBuild:
       commands:
-        - npm install
-        # Tailwind and autoprefixer should be installed via the main npm install
-        # - npm install autoprefixer postcss @tailwindcss/postcss tailwindcss --save
-        # Dev dependencies will be installed by the main npm install and re-installed in build phase
-        # - npm install --save-dev typescript @types/react @types/react-dom @types/node 
-        # Explicitly create a symbolic link to help with module resolution
-        - mkdir -p node_modules/@
-        - ln -sf $(pwd)/src node_modules/@/
+        - npm ci
+        # Generate .env file from Amplify environment variables
+        - |
+          echo "Creating .env file from Amplify environment variables"
+          echo "NEXTAUTH_SECRET=$NEXTAUTH_SECRET" >> .env.production
+          echo "MONGODB_URI=$MONGODB_URI" >> .env.production
+          echo "CLOUDINARY_API_SECRET=$CLOUDINARY_API_SECRET" >> .env.production
+          echo "DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY" >> .env.production
+          echo "DEEPSEEK_BASE_URL=$DEEPSEEK_BASE_URL" >> .env.production
+          echo "LOG_LEVEL=$LOG_LEVEL" >> .env.production
+          echo "NEXTAUTH_URL=$NEXTAUTH_URL" >> .env.production
+          echo "NEXT_PUBLIC_CLOUDINARY_API_KEY=$NEXT_PUBLIC_CLOUDINARY_API_KEY" >> .env.production
+          echo "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=$NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME" >> .env.production
+          echo "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY" >> .env.production
+          echo "NODE_ENV=production" >> .env.production
+          echo ".env.production file created:"
+          cat .env.production | grep -v -E "SECRET|KEY|URI" # Don't print sensitive values
     build:
       commands:
-        # Ensure clean state and all dependencies (including dev) are installed right before build
-        - rm -rf node_modules 
-        - npm install --include=dev
-        # Ensure environment variables are in .env.local which Next.js reads by default
-        - if [ -f ".env" ]; then cp .env .env.local; fi
-        # Use the build:amplify script
-        - npm run build:amplify
+        - npm run build
   artifacts:
     baseDirectory: .next
     files:
       - '**/*'
   cache:
     paths:
-      - node_modules/**/* # Keep caching node_modules, npm install will use it if possible
-      - .next/cache/**/* 
+      - node_modules/**/*
+      - .next/cache/**/*
 
 # Configuration to pass environment variables to Next.js SSR functions
 platform: "web-compute"

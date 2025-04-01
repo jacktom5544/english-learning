@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import { NextRequest } from 'next/server';
+import { NEXTAUTH_SECRET } from './lib/env';
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -67,8 +68,8 @@ export async function middleware(request: NextRequest) {
   try {
     token = await getToken({ 
       req: request,
-      // Use the same fallback as in auth.ts
-      secret: process.env.NEXTAUTH_SECRET || '291b0018d2327b4ba9cb49f24ce42ea4'
+      // Use our environment helper
+      secret: NEXTAUTH_SECRET
     });
   } catch (error) {
     console.error('Error in getToken middleware:', error);
