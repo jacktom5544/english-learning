@@ -22,7 +22,7 @@ const nextConfig = {
   // Increase timeout for static generation
   staticPageGenerationTimeout: 180,
   
-  // Specify packages to transpile - use simple list instead of regex
+  // Explicitly list packages to transpile instead of using a wildcard
   transpilePackages: [
     'lucide-react',
     'date-fns',
