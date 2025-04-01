@@ -2,44 +2,49 @@
 
 // Helper function to get environment variables with fallbacks
 export const getEnvVar = (key: string, defaultValue?: string): string => {
-  // Check process.env first (standard Node.js environment)
-  const envValue = process.env[key];
-  
-  if (envValue !== undefined) {
-    return envValue;
+  try {
+    // Check process.env first (standard Node.js environment)
+    const envValue = process.env[key];
+    
+    if (envValue !== undefined) {
+      return envValue;
+    }
+    
+    // Return default if provided
+    if (defaultValue !== undefined) {
+      console.warn(`Using default value for ${key}: ${defaultValue}`);
+      return defaultValue;
+    }
+    
+    // If no default and not found, warn and return empty string
+    console.warn(`Environment variable ${key} not found and no default provided`);
+    return '';
+  } catch (error) {
+    console.error(`Error accessing environment variable ${key}:`, error);
+    return defaultValue || '';
   }
-  
-  // Return default if provided
-  if (defaultValue !== undefined) {
-    console.warn(`Using default value for ${key}: ${defaultValue}`);
-    return defaultValue;
-  }
-  
-  // If no default and not found, warn and return empty string
-  console.warn(`Environment variable ${key} not found and no default provided`);
-  return '';
 };
 
 // Centralized environment variables
 export const ENV = {
   // Authentication
-  NEXTAUTH_SECRET: getEnvVar('NEXTAUTH_SECRET'),
+  NEXTAUTH_SECRET: getEnvVar('NEXTAUTH_SECRET', ''),
   NEXTAUTH_URL: getEnvVar('NEXTAUTH_URL', 'https://main.d2gwwh0jouqtnx.amplifyapp.com'),
   
   // Database
-  MONGODB_URI: getEnvVar('MONGODB_URI'),
+  MONGODB_URI: getEnvVar('MONGODB_URI', ''),
   
   // Cloudinary
-  CLOUDINARY_API_SECRET: getEnvVar('CLOUDINARY_API_SECRET'),
-  CLOUDINARY_API_KEY: getEnvVar('NEXT_PUBLIC_CLOUDINARY_API_KEY'),
-  CLOUDINARY_CLOUD_NAME: getEnvVar('NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME'),
+  CLOUDINARY_API_SECRET: getEnvVar('CLOUDINARY_API_SECRET', ''),
+  CLOUDINARY_API_KEY: getEnvVar('NEXT_PUBLIC_CLOUDINARY_API_KEY', ''),
+  CLOUDINARY_CLOUD_NAME: getEnvVar('NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME', ''),
   
   // DeepSeek
-  DEEPSEEK_API_KEY: getEnvVar('DEEPSEEK_API_KEY'),
+  DEEPSEEK_API_KEY: getEnvVar('DEEPSEEK_API_KEY', ''),
   DEEPSEEK_BASE_URL: getEnvVar('DEEPSEEK_BASE_URL', 'https://api.deepseek.com/v1'),
   
   // Stripe
-  STRIPE_PUBLISHABLE_KEY: getEnvVar('NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY'),
+  STRIPE_PUBLISHABLE_KEY: getEnvVar('NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY', ''),
   
   // Logging
   LOG_LEVEL: getEnvVar('LOG_LEVEL', 'info'),

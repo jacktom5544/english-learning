@@ -5,7 +5,6 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "build:amplify": "NEXT_TYPESCRIPT_CHECK=false next build --no-lint",
     "start": "next start",
     "lint": "next lint",
     "update-vocabulary": "ts-node -r tsconfig-paths/register src/scripts/updateVocabularyWithExamples.ts"
