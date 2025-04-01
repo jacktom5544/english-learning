@@ -61,7 +61,7 @@ const nextConfig = {
     return config;
   },
 
-  // Disable TypeScript checking for production builds
+  // Explicitly disable TypeScript checking for production builds
   typescript: {
     ignoreBuildErrors: true,
   },
