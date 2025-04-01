@@ -1,6 +1,6 @@
 version: 1
 # Specify Node.js version
-nodejs: 20
+nodejs: 18
 frontend:
   phases:
     preBuild:
