@@ -53,9 +53,9 @@ export const authOptions: NextAuthOptions = {
           throw new Error('メールアドレスとパスワードを入力してください');
         }
 
-        await connectToDatabase();
-        
         try {
+          await connectToDatabase();
+          
           const user = await User.findOne({ email: credentials.email });
           
           if (!user) {
@@ -90,66 +90,71 @@ export const authOptions: NextAuthOptions = {
   ],
   session: {
     strategy: 'jwt',
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   callbacks: {
     async jwt({ token, user, account }) {
-      // Initial sign in
-      if (account && user) {
-        console.log('JWT callback - Initial sign in', { user });
-        
-        token.id = user.id;
-        token.role = user.role;
-        token.points = user.points;
-        token.subscriptionStatus = user.subscriptionStatus;
-        
-        // If points or subscription status are missing, try to fetch them from the database
-        if (token.points === undefined || token.subscriptionStatus === undefined) {
-          try {
-            await connectToDatabase();
-            const dbUser = await User.findById(user.id);
-            if (dbUser) {
-              token.points = dbUser.points;
-              token.subscriptionStatus = dbUser.subscriptionStatus as SubscriptionStatus;
-              console.log('User data fetched from database for token', { 
-                points: dbUser.points,
-                subscriptionStatus: dbUser.subscriptionStatus 
-              });
+      try {
+        // Initial sign in
+        if (account && user) {
+          safeLog('JWT callback - Initial sign in');
+          
+          token.id = user.id;
+          token.role = user.role;
+          token.points = user.points;
+          token.subscriptionStatus = user.subscriptionStatus;
+          
+          // If points or subscription status are missing, try to fetch them from the database
+          if (token.points === undefined || token.subscriptionStatus === undefined) {
+            try {
+              await connectToDatabase();
+              const dbUser = await User.findById(user.id);
+              if (dbUser) {
+                token.points = dbUser.points;
+                token.subscriptionStatus = dbUser.subscriptionStatus as SubscriptionStatus;
+                safeLog('User data fetched from database for token');
+              }
+            } catch (error) {
+              safeError('Error fetching user data for token', error);
             }
-          } catch (error) {
-            console.error('Error fetching user data for token', error);
           }
         }
+        
+        return token;
+      } catch (error) {
+        safeError('Error in jwt callback', error);
+        return token;
       }
-      
-      return token;
     },
     async session({ session, token }) {
-      if (token && session.user) {
-        session.user.id = token.id as string;
-        session.user.role = token.role as string;
-        session.user.points = token.points as number;
-        session.user.subscriptionStatus = token.subscriptionStatus;
-        
-        // If points or subscription status are missing, try to fetch them from the database
-        if (session.user.points === undefined || session.user.subscriptionStatus === undefined) {
-          try {
-            await connectToDatabase();
-            const dbUser = await User.findById(session.user.id);
-            if (dbUser) {
-              session.user.points = dbUser.points;
-              session.user.subscriptionStatus = dbUser.subscriptionStatus as SubscriptionStatus;
-              console.log('User data fetched from database for session', { 
-                points: dbUser.points,
-                subscriptionStatus: dbUser.subscriptionStatus 
-              });
+      try {
+        if (token && session.user) {
+          session.user.id = token.id as string;
+          session.user.role = token.role as string;
+          session.user.points = token.points as number;
+          session.user.subscriptionStatus = token.subscriptionStatus;
+          
+          // If points or subscription status are missing, try to fetch them from the database
+          if (session.user.points === undefined || session.user.subscriptionStatus === undefined) {
+            try {
+              await connectToDatabase();
+              const dbUser = await User.findById(session.user.id);
+              if (dbUser) {
+                session.user.points = dbUser.points;
+                session.user.subscriptionStatus = dbUser.subscriptionStatus as SubscriptionStatus;
+                safeLog('User data fetched from database for session');
+              }
+            } catch (error) {
+              safeError('Error fetching user data for session', error);
             }
-          } catch (error) {
-            console.error('Error fetching user data for session', error);
           }
         }
+        
+        return session;
+      } catch (error) {
+        safeError('Error in session callback', error);
+        return session;
       }
-      
-      return session;
     },
   },
   pages: {
@@ -157,17 +162,18 @@ export const authOptions: NextAuthOptions = {
     error: '/login',
   },
   secret: process.env.NEXTAUTH_SECRET,
+  debug: process.env.NODE_ENV === 'development',
   logger: {
     error(code, ...message) {
-      safeError(code, ...message);
+      safeError(`NextAuth Error [${code}]`, ...message);
     },
     warn(code, ...message) {
-      safeError(code, ...message);
+      safeError(`NextAuth Warning [${code}]`, ...message);
     },
     debug(code, ...message) {
       // Disable debug logs in production
       if (process.env.NODE_ENV !== 'production') {
-        safeLog(code, ...message);
+        safeLog(`NextAuth Debug [${code}]`, ...message);
       }
     },
   },
