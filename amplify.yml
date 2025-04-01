@@ -11,28 +11,8 @@ frontend:
         - npm cache clean --force
         # Use npm install instead of ci since lock file was removed
         - npm install
-        # Install the babel module resolver plugin
-        - npm install --save-dev babel-plugin-module-resolver
         # Set a NODE_PATH environment variable to help resolve module paths
         - export NODE_PATH=./src
-        # Create a .babelrc file to help with path resolution
-        - |
-          cat > .babelrc <<EOL
-          {
-            "presets": ["next/babel"],
-            "plugins": [
-              [
-                "module-resolver",
-                {
-                  "root": ["./src"],
-                  "alias": {
-                    "@": "./src"
-                  }
-                }
-              ]
-            ]
-          }
-          EOL
         # Create a temporary next.config.js to ensure standalone output
         - |
           cat > next.config.js <<EOL
@@ -47,11 +27,7 @@ frontend:
                 '@': path.resolve(__dirname, './src'),
               };
               return config;
-            },
-            experimental: {
-              // Enable more verbose error messages for module resolution
-              esmExternals: 'loose',
-            },
+            }
           };
           
           module.exports = nextConfig;
@@ -116,11 +92,32 @@ frontend:
             console.log(`- ${filePath} exists:`, fs.existsSync(`./${filePath}`));
           });
           
-          // Run the Next.js build
-          console.log('Starting Next.js build...');
-          execSync('npx next build', { stdio: 'inherit' });
+          // Check if tsconfig.json exists and update it if needed
+          if (fs.existsSync('./tsconfig.json')) {
+            console.log('- tsconfig.json exists, ensuring paths are configured correctly');
+            const tsConfig = require('./tsconfig.json');
+            if (!tsConfig.compilerOptions.paths || !tsConfig.compilerOptions.paths['@/*']) {
+              console.log('  - Adding path aliases to tsconfig.json');
+              tsConfig.compilerOptions = tsConfig.compilerOptions || {};
+              tsConfig.compilerOptions.baseUrl = '.';
+              tsConfig.compilerOptions.paths = tsConfig.compilerOptions.paths || {};
+              tsConfig.compilerOptions.paths['@/*'] = ['./src/*'];
+              fs.writeFileSync('./tsconfig.json', JSON.stringify(tsConfig, null, 2));
+            }
+          }
           
-          console.log('Custom build script completed.');
+          // Run the Next.js build with NODE_PATH explicitly set
+          console.log('Starting Next.js build...');
+          try {
+            execSync('NODE_PATH=./src npx next build', { 
+              stdio: 'inherit',
+              env: { ...process.env, NODE_PATH: './src' }
+            });
+            console.log('Custom build script completed successfully.');
+          } catch (error) {
+            console.error('Build failed:', error.message);
+            process.exit(1);
+          }
           EOL
           
         # Run the custom build script
@@ -128,7 +125,32 @@ frontend:
         
         # If the custom script fails, fall back to standard build
         - echo "If custom build failed, trying fallback Next.js build..."
-        - npx next build || true
+        - |
+          # Remove any .babelrc if it exists to use default Next.js configuration
+          if [ -f .babelrc ]; then
+            echo "Removing .babelrc for fallback build"
+            rm .babelrc
+          fi
+          # Ensure next.config.js exists with minimal configuration
+          cat > next.config.js <<'EOL'
+          /** @type {import('next').NextConfig} */
+          const path = require('path');
+          
+          const nextConfig = {
+            output: 'standalone',
+            webpack: (config) => {
+              config.resolve.alias = {
+                ...config.resolve.alias,
+                '@': path.resolve(__dirname, './src'),
+              };
+              return config;
+            }
+          };
+          
+          module.exports = nextConfig;
+          EOL
+          # Run Next.js build with NODE_PATH
+          NODE_PATH=./src npx next build || true
         
         # Verify build output
         - echo "Verifying build output..."
