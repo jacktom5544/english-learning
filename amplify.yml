@@ -3,9 +3,8 @@ frontend:
   phases:
     preBuild:
       commands:
-        # Ensure TypeScript is properly installed first
+        # Install dependencies
         - npm ci
-        - npm install --save-dev typescript@5.8.2 @types/react@19.0.12 @types/react-dom@19
         # Generate .env file from Amplify environment variables
         - |
           echo "Creating .env file from Amplify environment variables"
@@ -22,10 +21,12 @@ frontend:
           echo "NODE_ENV=production" >> .env.production
           echo ".env.production file created:"
           cat .env.production | grep -v -E "SECRET|KEY|URI" # Don't print sensitive values
+        # Make the build script executable
+        - chmod +x build.js
     build:
       commands:
-        # Use our custom build script instead
-        - npm run build:amplify
+        # Use our custom build script
+        - node build.js
   artifacts:
     baseDirectory: .next
     files:
