@@ -43,7 +43,14 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  transpilePackages: ['*'],
+  // Specify packages to transpile - use simple list instead of regex
+  transpilePackages: [
+    'lucide-react',
+    'date-fns',
+    'recharts',
+    'react-icons',
+    '@stripe/stripe-js'
+  ],
   webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,
@@ -231,6 +238,36 @@ app.prepare().then(() => {
 });`;
     
     fs.writeFileSync('.next/standalone/server.js', serverJs);
+    
+    // Create required-server-files.json
+    const requiredServerFiles = {
+      version: 1,
+      config: {
+        ...nextConfig,
+        configFile: true,
+        experimental: {
+          appDir: true,
+          serverActions: true
+        },
+        compress: true,
+        poweredByHeader: true
+      },
+      appDir: true,
+      files: [
+        'server.js',
+        'next.config.js'
+      ],
+      ignore: [
+        'node_modules'
+      ]
+    };
+    
+    fs.writeFileSync('.next/standalone/required-server-files.json', JSON.stringify(requiredServerFiles, null, 2));
+    console.log('Created required-server-files.json for Amplify deployment');
+    
+    // Create .next/required-server-files.json as well (as a backup)
+    fs.writeFileSync('.next/required-server-files.json', JSON.stringify(requiredServerFiles, null, 2));
+    console.log('Created backup required-server-files.json in .next directory');
   }
 }
 

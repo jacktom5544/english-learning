@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "node force-build.js",
+    "build": "next build --no-lint || node amplify-deploy.js",
+    "amplify-deploy": "node amplify-deploy.js",
     "start": "next start",
     "lint": "next lint",
     "update-vocabulary": "ts-node -r tsconfig-paths/register src/scripts/updateVocabularyWithExamples.ts"

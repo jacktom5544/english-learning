@@ -22,8 +22,14 @@ const nextConfig = {
   // Increase timeout for static generation
   staticPageGenerationTimeout: 180,
   
-  // Disable type checking completely for production builds
-  transpilePackages: ['*'],
+  // Specify packages to transpile - use simple list instead of regex
+  transpilePackages: [
+    'lucide-react',
+    'date-fns',
+    'recharts',
+    'react-icons',
+    '@stripe/stripe-js'
+  ],
   
   // Basic experimental features
   experimental: {
