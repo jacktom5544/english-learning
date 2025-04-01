@@ -11,8 +11,6 @@ frontend:
         - npm cache clean --force
         # Use npm install instead of ci since lock file was removed
         - npm install
-        # Install TypeScript dependencies explicitly
-        - npm install --no-save typescript @types/react @types/react-dom
         # Create a temporary next.config.js to ensure standalone output
         - |
           cat > next.config.js <<EOL
@@ -23,9 +21,6 @@ frontend:
             output: 'standalone',
             eslint: {
               ignoreDuringBuilds: true,
-            },
-            typescript: {
-              ignoreBuildErrors: true,
             },
             webpack: (config) => {
               // Add aliases
