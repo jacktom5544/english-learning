@@ -11,8 +11,6 @@ frontend:
         - npm cache clean --force
         # Use npm install instead of ci since lock file was removed
         - npm install
-        # Restore explicit TS dependency install
-        - npm install --no-save typescript @types/react @types/react-dom
         # Create a temporary next.config.js to ensure standalone output
         - |
           cat > next.config.js <<EOL
@@ -21,6 +19,13 @@ frontend:
           
           const nextConfig = {
             output: 'standalone',
+            webpack: (config) => {
+              config.resolve.alias = {
+                ...config.resolve.alias,
+                '@': path.resolve(__dirname, './src'),
+              };
+              return config;
+            },
           };
           
           module.exports = nextConfig;
