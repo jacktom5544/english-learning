@@ -98,7 +98,7 @@ frontend:
         
         # Create a special build script to handle path resolution
         - |
-          cat > custom-build.js <<EOL
+          cat > custom-build.js <<'EOL'
           // Script to help with path resolution during build
           const fs = require('fs');
           const path = require('path');
