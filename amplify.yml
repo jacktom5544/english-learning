@@ -21,20 +21,6 @@ frontend:
           
           const nextConfig = {
             output: 'standalone',
-            eslint: {
-              ignoreDuringBuilds: true,
-            },
-            typescript: {
-              ignoreBuildErrors: true,
-            },
-            webpack: (config) => {
-              // Add aliases
-              config.resolve.alias = {
-                ...config.resolve.alias,
-                '@': path.resolve(__dirname, './src'),
-              };
-              return config;
-            },
           };
           
           module.exports = nextConfig;
