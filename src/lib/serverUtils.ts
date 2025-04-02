@@ -5,7 +5,9 @@ import { authOptions } from '@/lib/auth';
 import User from '@/models/User';
 import { connectToDatabase } from '@/lib/db';
 import { IUser } from '@/models/User';
-import { MONTHLY_POINTS, MAX_POINTS } from './pointSystem';
+import { MONTHLY_POINTS, MAX_POINTS, PointSystem } from './pointSystem';
+import { ENV } from './env';
+import { safeLog, safeError } from './utils';
 
 /**
  * Updates user points if 30 days have passed since the last update
@@ -45,30 +47,68 @@ export async function updateMonthlyPoints(user: IUser): Promise<IUser | null> {
  * @returns Updated user document or null if not enough points
  */
 export async function consumePoints(userId: string, pointsToConsume: number): Promise<IUser | null> {
-  // Ensure database connection
-  await connectToDatabase();
-  
-  const user = await User.findById(userId);
-  
-  if (!user) return null;
-  
-  // If the action is free (costs 0 points), just return the user without any point deduction
-  if (pointsToConsume === 0) {
+  try {
+    // Ensure database connection
+    await connectToDatabase();
+    
+    const user = await User.findById(userId);
+    
+    if (!user) {
+      safeError('User not found when consuming points', { userId });
+      return null;
+    }
+    
+    // Log point consumption attempt
+    safeLog('Point consumption attempt', { 
+      userId, 
+      pointsToConsume, 
+      currentPoints: user.points,
+      isProduction: ENV.isProduction,
+      inAmplify: ENV.isAWSAmplify
+    });
+    
+    // If the action is free (costs 0 points), just return the user without any point deduction
+    if (pointsToConsume === 0) {
+      return user;
+    }
+    
+    // Use our enhanced PointSystem to check if user has enough points
+    // In production, require actual points. In development/test, allow usage even without enough points
+    if (!PointSystem.hasEnoughPoints(user.points, pointsToConsume)) {
+      safeLog('Not enough points for action', { 
+        userId, 
+        pointsToConsume, 
+        currentPoints: user.points 
+      });
+      return null;
+    }
+    
+    // Update user points
+    user.points -= pointsToConsume;
+    user.pointsUsedThisMonth += pointsToConsume;
+    
+    // Save the updated user
+    await user.save();
+    
+    safeLog('Points consumed successfully', { 
+      userId, 
+      pointsConsumed: pointsToConsume, 
+      remainingPoints: user.points 
+    });
+    
     return user;
-  }
-  
-  // Check if user has enough points
-  if (user.points < pointsToConsume) {
+  } catch (error) {
+    safeError('Error during point consumption', error);
+    
+    // If in development, allow the user to proceed anyway
+    if (!ENV.isProduction) {
+      safeLog('Development mode: allowing action despite error');
+      const user = await User.findById(userId);
+      return user;
+    }
+    
     return null;
   }
-  
-  // Update user points
-  user.points -= pointsToConsume;
-  user.pointsUsedThisMonth += pointsToConsume;
-  
-  // Save the updated user
-  await user.save();
-  return user;
 }
 
 /**

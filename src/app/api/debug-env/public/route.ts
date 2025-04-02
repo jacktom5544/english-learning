@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { ENV } from '@/lib/env';
 
 // This is a special debug endpoint that doesn't require authentication
 // It only exposes whether variables exist, not their actual values
@@ -29,6 +30,15 @@ export async function GET() {
           log_level: process.env.LOG_LEVEL || "not_set",
           amplify_env: !!process.env.AWS_REGION ? "aws_amplify" : "not_aws"
         }
+      },
+      env_helper: {
+        mongodb_uri_exists: !!ENV.MONGODB_URI,
+        mongodb_uri_prefix: ENV.MONGODB_URI.substring(0, 10) + "...",
+        nextauth_url: ENV.NEXTAUTH_URL,
+        nextauth_secret_exists: !!ENV.NEXTAUTH_SECRET,
+        nextauth_secret_length: ENV.NEXTAUTH_SECRET.length,
+        is_amplify: ENV.isAWSAmplify,
+        is_production: ENV.isProduction
       },
       timestamp: new Date().toISOString(),
       note: "This is a public debug endpoint that safely shows environment variable existence"
