@@ -76,6 +76,10 @@ const nextConfig = {
   
   // Disable source maps in production
   productionBrowserSourceMaps: false,
+  
+  // Ensure middleware works correctly with AWS CloudFront
+  skipMiddlewareUrlNormalize: true,
+  skipTrailingSlashRedirect: true,
 }
 
 module.exports = nextConfig; 

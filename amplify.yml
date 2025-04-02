@@ -36,14 +36,20 @@ frontend:
         - echo "AWS_REGION=$AWS_REGION" >> .env.local
         - echo "AMPLIFY_APP_ID=$AWS_APP_ID" >> .env.local
         - if [ ! -z "$AWS_BRANCH" ]; then echo "AMPLIFY_BRANCH=$AWS_BRANCH" >> .env.local; fi
+        - echo "AMPLIFY_APP_DOMAIN=main.d2gwwh0jouqtnx.amplifyapp.com" >> .env.local
         # Log that env vars were set (without exposing values)
         - echo "Environment variables checked and set in .env.local"
         # Use the build:amplify script
         - npm run build:amplify
+        # Debug info - validate middleware file was built properly
+        - echo "Checking for middleware output"
+        - ls -la .next/server/
+        - ls -la .next/server/middleware* || echo "No middleware files found"
   artifacts:
     baseDirectory: .next
     files:
       - '**/*'
+    discard-paths: no
   cache:
     paths:
       - node_modules/**/* # Keep caching node_modules, npm install will use it if possible
@@ -53,6 +59,8 @@ frontend:
 platform: "web-compute"
 # This section tells Amplify which env vars to pass to the SSR runtime
 nextjsSSR:
+  buildCommand: ""
+  preBuildCommand: ""
   environments:
     - MONGODB_URI
     - NEXTAUTH_SECRET
@@ -68,4 +76,5 @@ nextjsSSR:
     - CLOUDINARY_API_SECRET
     - LOG_LEVEL
     - NODE_ENV
-    - AWS_REGION 
+    - AWS_REGION
+    - AMPLIFY_APP_DOMAIN 
