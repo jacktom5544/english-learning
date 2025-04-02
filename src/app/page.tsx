@@ -42,7 +42,7 @@ export default function Home() {
           <div className="lg:grid lg:grid-cols-12 lg:gap-8">
             <div className="sm:text-center md:max-w-2xl md:mx-auto lg:col-span-6 lg:text-left">
               <h2 className="text-base font-semibold tracking-wide text-blue-600 uppercase">
-                英語学習サービス
+                英語学習サービス1
               </h2>
               <h1 className="mt-2 text-4xl font-extrabold tracking-tight text-gray-900 sm:text-5xl">
                 あなたに合った英語学習を始めましょう

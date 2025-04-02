@@ -8,7 +8,7 @@ frontend:
         # - npm install autoprefixer postcss @tailwindcss/postcss tailwindcss --save
         # Dev dependencies will be installed by the main npm install and re-installed in build phase
         # - npm install --save-dev typescript @types/react @types/react-dom @types/node 
-        # Create symbolic link for module resolution
+        # Explicitly create a symbolic link to help with module resolution
         - mkdir -p node_modules/@
         - ln -sf $(pwd)/src node_modules/@/
     build:
@@ -16,35 +16,22 @@ frontend:
         # Ensure clean state and all dependencies (including dev) are installed right before build
         - rm -rf node_modules 
         - npm install --include=dev
-        # Create a .env.local file from Amplify environment variables without exposing values
-        - touch .env.local
-        - "[ ! -z \"$MONGODB_URI\" ] && echo \"MONGODB_URI=$MONGODB_URI\" >> .env.local"
-        - "[ ! -z \"$NEXTAUTH_URL\" ] && echo \"NEXTAUTH_URL=$NEXTAUTH_URL\" >> .env.local"
-        - "[ ! -z \"$NEXTAUTH_SECRET\" ] && echo \"NEXTAUTH_SECRET=$NEXTAUTH_SECRET\" >> .env.local"
-        - "[ ! -z \"$NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME\" ] && echo \"NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=$NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME\" >> .env.local"
-        - "[ ! -z \"$NEXT_PUBLIC_CLOUDINARY_API_KEY\" ] && echo \"NEXT_PUBLIC_CLOUDINARY_API_KEY=$NEXT_PUBLIC_CLOUDINARY_API_KEY\" >> .env.local"
-        - "[ ! -z \"$CLOUDINARY_API_SECRET\" ] && echo \"CLOUDINARY_API_SECRET=$CLOUDINARY_API_SECRET\" >> .env.local"
-        - "[ ! -z \"$DEEPSEEK_API_KEY\" ] && echo \"DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY\" >> .env.local"
-        - "[ ! -z \"$DEEPSEEK_BASE_URL\" ] && echo \"DEEPSEEK_BASE_URL=$DEEPSEEK_BASE_URL\" >> .env.local"
-        - "[ ! -z \"$LOG_LEVEL\" ] && echo \"LOG_LEVEL=$LOG_LEVEL\" >> .env.local"
-        - "[ ! -z \"$STRIPE_SECRET_KEY\" ] && echo \"STRIPE_SECRET_KEY=$STRIPE_SECRET_KEY\" >> .env.local"
-        - "[ ! -z \"$STRIPE_PUBLISHABLE_KEY\" ] && echo \"STRIPE_PUBLISHABLE_KEY=$STRIPE_PUBLISHABLE_KEY\" >> .env.local"
-        - "[ ! -z \"$STRIPE_WEBHOOK_SECRET\" ] && echo \"STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SECRET\" >> .env.local"
-        - "[ ! -z \"$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY\" ] && echo \"NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY\" >> .env.local"
-        - echo "NODE_ENV=production" >> .env.local
-        # Provide additional Amplify-specific variables
-        - echo "AWS_REGION=$AWS_REGION" >> .env.local
-        - echo "AMPLIFY_APP_ID=$AWS_APP_ID" >> .env.local
-        - if [ ! -z "$AWS_BRANCH" ]; then echo "AMPLIFY_BRANCH=$AWS_BRANCH" >> .env.local; fi
-        - echo "AMPLIFY_APP_DOMAIN=main.d2gwwh0jouqtnx.amplifyapp.com" >> .env.local
-        # Log that env vars were set (without exposing values)
-        - echo "Environment variables checked and set in .env.local"
+        # Write environment variables explicitly to .env.local
+        - echo "MONGODB_URI=$MONGODB_URI" >> .env.local
+        - echo "NEXTAUTH_SECRET=$NEXTAUTH_SECRET" >> .env.local
+        - echo "NEXTAUTH_URL=$NEXTAUTH_URL" >> .env.local
+        - echo "STRIPE_SECRET_KEY=$STRIPE_SECRET_KEY" >> .env.local
+        - echo "STRIPE_PUBLISHABLE_KEY=$STRIPE_PUBLISHABLE_KEY" >> .env.local
+        - echo "STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SECRET" >> .env.local
+        - echo "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY" >> .env.local
+        - echo "DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY" >> .env.local
+        - echo "DEEPSEEK_BASE_URL=$DEEPSEEK_BASE_URL" >> .env.local
+        - echo "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=$NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME" >> .env.local
+        - echo "NEXT_PUBLIC_CLOUDINARY_API_KEY=$NEXT_PUBLIC_CLOUDINARY_API_KEY" >> .env.local
+        - echo "CLOUDINARY_API_SECRET=$CLOUDINARY_API_SECRET" >> .env.local
+        - echo "NODE_ENV=$NODE_ENV" >> .env.local
         # Use the build:amplify script
         - npm run build:amplify
-        # Debug info - validate middleware file was built properly
-        - echo "Checking for middleware output"
-        - ls -la .next/server/
-        - ls -la .next/server/middleware* || echo "No middleware files found"
   artifacts:
     baseDirectory: .next
     files:
@@ -55,9 +42,8 @@ frontend:
       - node_modules/**/* # Keep caching node_modules, npm install will use it if possible
       - .next/cache/**/* 
 
-# Configure environments to pass to SSR runtime
+# Configuration to pass environment variables to Next.js SSR functions
 platform: "web-compute"
-# This section tells Amplify which env vars to pass to the SSR runtime
 nextjsSSR:
   buildCommand: ""
   preBuildCommand: ""
@@ -74,7 +60,6 @@ nextjsSSR:
     - NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
     - NEXT_PUBLIC_CLOUDINARY_API_KEY
     - CLOUDINARY_API_SECRET
-    - LOG_LEVEL
-    - NODE_ENV
+    - NODE_ENV # Include NODE_ENV as well, if needed by your app
     - AWS_REGION
-    - AMPLIFY_APP_DOMAIN 
+    - AMPLIFY_APP_DOMAIN
