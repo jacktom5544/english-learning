@@ -15,33 +15,78 @@ function getNextAuthURL(): string {
   return 'http://localhost:3000';
 }
 
+// Function to get the correct URL from CloudFront/Amplify headers
+function getCorrectUrlFromRequest(req: NextRequest): string {
+  try {
+    // In production always use the forwarded host
+    if (process.env.NODE_ENV === 'production') {
+      const forwardedHost = req.headers.get('x-forwarded-host');
+      const path = new URL(req.url).pathname;
+      const search = new URL(req.url).search;
+      
+      if (forwardedHost) {
+        const correctUrl = `https://${forwardedHost}${path}${search}`;
+        safeLog('[Debug Session] Corrected URL from headers:', {
+          original: req.url,
+          forwarded: forwardedHost,
+          corrected: correctUrl
+        });
+        return correctUrl;
+      }
+    }
+    
+    // If not in production or no forwarded host, use the base URL + path
+    const baseUrl = getNextAuthURL();
+    const path = new URL(req.url).pathname;
+    const search = new URL(req.url).search;
+    return `${baseUrl}${path}${search}`;
+  } catch (error) {
+    safeError('[Debug Session] Error correcting URL:', error);
+    return req.url;
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     safeLog('[Debug Session] Processing debug request');
     
-    // Get the actual correct URL for this environment
-    const baseUrl = getNextAuthURL();
-    // Extract path from request
-    const path = new URL(req.url).pathname;
-    // Construct correct full URL
-    const correctUrl = `${baseUrl}${path}`;
+    // Get the corrected URL
+    const correctUrl = getCorrectUrlFromRequest(req);
     
-    safeLog('[Debug Session] URLs', {
-      requestUrl: req.url,
+    // Get the actual host from headers for debugging
+    const host = req.headers.get('host') || 'unknown';
+    const forwardedHost = req.headers.get('x-forwarded-host') || 'none';
+    const referer = req.headers.get('referer') || 'none';
+    const origin = req.headers.get('origin') || 'none';
+    
+    // Create detailed info about the request for debugging
+    const requestAnalysis = {
+      originalUrl: req.url,
       correctedUrl: correctUrl,
-      baseUrl
-    });
+      headerHost: host,
+      forwardedHost: forwardedHost,
+      amplify: {
+        detected: process.env.AWS_REGION ? true : false,
+        region: process.env.AWS_REGION || 'none',
+        cloudfrontInfo: req.headers.get('cloudfront-viewer-country') ? 'present' : 'absent'
+      },
+      environment: process.env.NODE_ENV,
+      nodeVersion: process.version
+    };
+    
+    safeLog('[Debug Session] Request Analysis:', requestAnalysis);
     
     // Only get basic environment info to identify the issue
     const responseData = {
       requestInfo: {
-        url: correctUrl, // Use the corrected URL, not req.url
-        actualReqUrl: req.url, // For debugging
+        url: correctUrl, 
+        actualReqUrl: correctUrl, // Now uses the corrected URL
         headers: Object.fromEntries(req.headers),
-        hasCookies: !!req.headers.get('cookie')
+        hasCookies: !!req.headers.get('cookie'),
+        analysis: requestAnalysis // Include detailed analysis in response
       },
       env: {
-        nextAuthUrl: process.env.NEXTAUTH_URL || baseUrl,
+        nextAuthUrl: process.env.NEXTAUTH_URL || getNextAuthURL(),
         nodeEnv: process.env.NODE_ENV,
         hasSecret: !!process.env.NEXTAUTH_SECRET,
         isAmplify: process.env.AWS_REGION ? true : false
