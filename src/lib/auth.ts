@@ -49,11 +49,18 @@ declare module "next-auth/jwt" {
 
 // Get the NextAuth secret safely
 function getNextAuthSecret(): string {
+  // First try the hardcoded value for Amplify builds
+  const hardcodedSecret = 'WJP6m49zmV7Yo1ZNhQmSDctrZHC2WoayEFe9gGzcAAg=';
+  
+  // Then check for environment variable
   const secret = process.env.NEXTAUTH_SECRET;
+  
   if (!secret && process.env.NODE_ENV === 'production') {
-    safeError('[auth.ts] NEXTAUTH_SECRET is missing in production environment');
+    safeError('[auth.ts] NEXTAUTH_SECRET is missing in environment, using hardcoded value');
+    return hardcodedSecret;
   }
-  return secret || 'dev-only-secret';
+  
+  return secret || hardcodedSecret;
 }
 
 // Get the domain for cookies
@@ -245,30 +252,30 @@ export const authOptions: NextAuthOptions = {
       name: `next-auth.session-token`,
       options: {
         httpOnly: true,
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        sameSite: 'lax',
         path: '/',
         secure: process.env.NODE_ENV === 'production',
-        domain: getCookieDomain(),
+        // Don't set domain for Amplify
       },
     },
     callbackUrl: {
       name: `next-auth.callback-url`,
       options: {
         httpOnly: true,
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        sameSite: 'lax',
         path: '/',
         secure: process.env.NODE_ENV === 'production',
-        domain: getCookieDomain(),
+        // Don't set domain for Amplify
       },
     },
     csrfToken: {
       name: `next-auth.csrf-token`,
       options: {
         httpOnly: true,
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        sameSite: 'lax',
         path: '/',
         secure: process.env.NODE_ENV === 'production',
-        domain: getCookieDomain(),
+        // Don't set domain for Amplify
       },
     },
   },
