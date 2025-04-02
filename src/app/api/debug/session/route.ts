@@ -1,19 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { safeLog, safeError } from '@/lib/utils';
 
+// Get the correct NextAuth URL based on environment (same as middleware.ts)
+function getNextAuthURL(): string {
+  // Always use the deployed Amplify URL in production
+  if (process.env.NODE_ENV === 'production') {
+    return 'https://main.d2gwwh0jouqtnx.amplifyapp.com';
+  }
+  // Check for explicitly set NEXTAUTH_URL
+  if (process.env.NEXTAUTH_URL) {
+    return process.env.NEXTAUTH_URL;
+  }
+  // Default to localhost
+  return 'http://localhost:3000';
+}
+
 export async function GET(req: NextRequest) {
   try {
-    safeLog('[Debug Session] Processing simplified debug request');
+    safeLog('[Debug Session] Processing debug request');
+    
+    // Get the actual correct URL for this environment
+    const baseUrl = getNextAuthURL();
+    // Extract path from request
+    const path = new URL(req.url).pathname;
+    // Construct correct full URL
+    const correctUrl = `${baseUrl}${path}`;
+    
+    safeLog('[Debug Session] URLs', {
+      requestUrl: req.url,
+      correctedUrl: correctUrl,
+      baseUrl
+    });
     
     // Only get basic environment info to identify the issue
     const responseData = {
       requestInfo: {
-        url: req.url,
+        url: correctUrl, // Use the corrected URL, not req.url
+        actualReqUrl: req.url, // For debugging
         headers: Object.fromEntries(req.headers),
         hasCookies: !!req.headers.get('cookie')
       },
       env: {
-        nextAuthUrl: process.env.NEXTAUTH_URL,
+        nextAuthUrl: process.env.NEXTAUTH_URL || baseUrl,
         nodeEnv: process.env.NODE_ENV,
         hasSecret: !!process.env.NEXTAUTH_SECRET,
         isAmplify: process.env.AWS_REGION ? true : false
@@ -31,7 +59,7 @@ export async function GET(req: NextRequest) {
     
     return response;
   } catch (error) {
-    safeError('[Debug Session] Error in simplified debug endpoint:', error);
+    safeError('[Debug Session] Error in debug endpoint:', error);
     
     // Create error response with CORS headers
     const errorResponse = NextResponse.json(
