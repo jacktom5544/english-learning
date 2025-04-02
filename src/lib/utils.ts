@@ -45,27 +45,53 @@ function sanitizeObject(obj: any): any {
   return sanitized;
 }
 
-// Safe logging function
+/**
+ * Safe logging function that works in all environments
+ * Avoids exposing sensitive data in production logs
+ */
 export function safeLog(message: string, ...args: any[]): void {
-  console.log(
-    message,
-    ...args.map(arg => 
-      typeof arg === 'object' && arg !== null 
-        ? sanitizeObject(arg) 
-        : arg
-    )
-  );
+  try {
+    // In production, we might want to limit some logging
+    if (process.env.NODE_ENV === 'production') {
+      // Filter out potentially sensitive information
+      const safeArgs = args.map(arg => {
+        if (typeof arg === 'object' && arg !== null) {
+          // Clone the object to avoid modifying the original
+          const safeCopy = { ...arg };
+          
+          // Mask potentially sensitive fields
+          const sensitiveFields = ['password', 'token', 'secret', 'key', 'apiKey'];
+          Object.keys(safeCopy).forEach(key => {
+            if (sensitiveFields.some(field => key.toLowerCase().includes(field))) {
+              safeCopy[key] = '[REDACTED]';
+            }
+          });
+          
+          return safeCopy;
+        }
+        return arg;
+      });
+      
+      console.log(`[INFO] ${message}`, ...safeArgs);
+    } else {
+      // In development, log everything
+      console.log(`[INFO] ${message}`, ...args);
+    }
+  } catch (error) {
+    console.error('Error in safeLog:', error);
+  }
 }
 
+/**
+ * Safe error logging function
+ */
 export function safeError(message: string, ...args: any[]): void {
-  console.error(
-    message,
-    ...args.map(arg => 
-      typeof arg === 'object' && arg !== null 
-        ? sanitizeObject(arg) 
-        : arg
-    )
-  );
+  try {
+    // For errors, we generally want to log in all environments
+    console.error(`[ERROR] ${message}`, ...args);
+  } catch (error) {
+    console.error('Error in safeError:', error);
+  }
 }
 
 export function safeWarn(message: string, ...args: any[]): void {
@@ -77,4 +103,52 @@ export function safeWarn(message: string, ...args: any[]): void {
         : arg
     )
   );
+}
+
+/**
+ * Safely parse JSON with error handling
+ */
+export function safeJsonParse<T>(jsonString: string, fallback: T): T {
+  try {
+    return JSON.parse(jsonString) as T;
+  } catch (error) {
+    safeError('Error parsing JSON', error);
+    return fallback;
+  }
+}
+
+/**
+ * Format a date for display
+ */
+export function formatDate(date: Date | string | number): string {
+  try {
+    const d = new Date(date);
+    return d.toLocaleDateString('ja-JP', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  } catch (error) {
+    safeError('Error formatting date', error);
+    return String(date);
+  }
+}
+
+/**
+ * Format a datetime for display
+ */
+export function formatDateTime(date: Date | string | number): string {
+  try {
+    const d = new Date(date);
+    return d.toLocaleDateString('ja-JP', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch (error) {
+    safeError('Error formatting datetime', error);
+    return String(date);
+  }
 }

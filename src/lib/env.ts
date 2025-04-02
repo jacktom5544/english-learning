@@ -5,14 +5,18 @@
  * sensitive information in the codebase
  */
 
+import { safeLog } from './utils';
+
 // Helper function to log environment variable status (without exposing values)
-export function logEnvironmentStatus() {
-  console.log('Environment check:');
-  console.log('- NODE_ENV:', process.env.NODE_ENV);
-  console.log('- MongoDB URI exists:', !!process.env.MONGODB_URI);
-  console.log('- NEXTAUTH_URL exists:', !!process.env.NEXTAUTH_URL);
-  console.log('- NEXTAUTH_SECRET exists:', !!process.env.NEXTAUTH_SECRET);
-  console.log('- Environment detected:', isAWSAmplify() ? 'AWS Amplify' : (isProduction() ? 'Production' : 'Development'));
+export function logEnvironmentStatus(): void {
+  safeLog('Environment Information:', {
+    NODE_ENV: process.env.NODE_ENV,
+    isAmplify: isAmplifyEnvironment(),
+    AMPLIFY_APP_DOMAIN: process.env.AMPLIFY_APP_DOMAIN || 'not set',
+    AWS_REGION: process.env.AWS_REGION || 'not set',
+    AWS_LAMBDA_FUNCTION_NAME: process.env.AWS_LAMBDA_FUNCTION_NAME ? 'set' : 'not set',
+    NEXTAUTH_URL: process.env.NEXTAUTH_URL || 'not set'
+  });
 }
 
 // Safe environment variable accessor with proper type checking
@@ -34,32 +38,33 @@ export function isProduction(): boolean {
   return process.env.NODE_ENV === 'production';
 }
 
-// Determine proper NextAuth URL based on environment
+// Determine if running in Amplify environment
+export function isAmplifyEnvironment(): boolean {
+  return process.env.AMPLIFY_ENVIRONMENT === 'true' || 
+         !!process.env.AWS_LAMBDA_FUNCTION_NAME || 
+         !!process.env.AWS_REGION;
+}
+
+// Get the correct NextAuth URL based on environment
 export function getNextAuthURL(): string {
-  // Try to get from env first (preferred)
+  // Check for explicitly set NEXTAUTH_URL
   if (process.env.NEXTAUTH_URL) {
     return process.env.NEXTAUTH_URL;
   }
   
-  // In AWS Amplify, construct from domain name if available
-  if (isAWSAmplify() && process.env.AMPLIFY_APP_DOMAIN) {
+  // Check for Amplify custom domain
+  if (process.env.AMPLIFY_APP_DOMAIN) {
     return `https://${process.env.AMPLIFY_APP_DOMAIN}`;
   }
   
-  // Last resort fallback for AWS Amplify (using hardcoded domain)
-  if (isAWSAmplify()) {
-    console.warn('NEXTAUTH_URL not found, using derived URL for AWS Amplify');
-    return 'https://main.d2gwwh0jouqtnx.amplifyapp.com';
+  // Check for Amplify default domain pattern
+  if (isAmplifyEnvironment() && process.env.AWS_AMPLIFY_APP_ID) {
+    const branch = process.env.AWS_BRANCH || 'main';
+    return `https://${branch}.${process.env.AWS_AMPLIFY_APP_ID}.amplifyapp.com`;
   }
   
-  // Return localhost for development (non-sensitive)
-  if (!isProduction()) {
-    return 'http://localhost:3000';
-  }
-  
-  // Log an error in production if we can't determine the URL
-  console.error('NEXTAUTH_URL is not set in production environment');
-  return '';
+  // Default to localhost
+  return 'http://localhost:3000';
 }
 
 // Environment variable helper with secure fallbacks

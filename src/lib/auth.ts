@@ -11,7 +11,8 @@ type SubscriptionStatus = 'active' | 'cancelled' | 'inactive';
 // Log environment variables on module load
 if (typeof window === 'undefined') {
   logEnvironmentStatus();
-  safeLog('Auth module loaded with NEXTAUTH_URL:', getNextAuthURL());
+  const url = getNextAuthURL();
+  safeLog('Auth module loaded with NEXTAUTH_URL:', url);
 }
 
 // Extend the built-in session types
@@ -46,14 +47,13 @@ declare module "next-auth/jwt" {
   }
 }
 
-// Get the NextAuth secret in a secure way
+// Get the NextAuth secret safely
 function getNextAuthSecret(): string {
   const secret = process.env.NEXTAUTH_SECRET;
   if (!secret && process.env.NODE_ENV === 'production') {
-    console.error('NEXTAUTH_SECRET not found in production environment');
+    console.error('NEXTAUTH_SECRET is missing in production environment');
   }
-  // Return the actual secret if available, or use a development-only fallback
-  return secret || 'dev-mode-secret-not-used-in-production';
+  return secret || 'dev-only-secret';
 }
 
 export const authOptions: NextAuthOptions = {
@@ -178,8 +178,23 @@ export const authOptions: NextAuthOptions = {
     signIn: '/login',
     error: '/login',
   },
+  // Use secure NextAuth secret
   secret: getNextAuthSecret(),
+  // Enable debug only in development
   debug: process.env.NODE_ENV !== 'production',
+  // Configure cookie options to work properly in production
+  cookies: {
+    sessionToken: {
+      name: `next-auth.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+      },
+    },
+  },
+  // Enable logging
   logger: {
     error(code, ...message) {
       safeError(`NextAuth Error [${code}]`, ...message);
@@ -188,7 +203,6 @@ export const authOptions: NextAuthOptions = {
       safeError(`NextAuth Warning [${code}]`, ...message);
     },
     debug(code, ...message) {
-      // Only enable debug logs in development to avoid exposing sensitive info
       if (process.env.NODE_ENV !== 'production') {
         safeLog(`NextAuth Debug [${code}]`, ...message);
       }
