@@ -9,11 +9,15 @@ import { isAmplifyEnvironment, getNextAuthURL } from '@/lib/env';
 // Simple health check for authentication system
 export async function GET(request: NextRequest) {
   safeLog('[auth-debug] Received request');
+  let token = null;
+  let session = null;
+  let envInfo: any = {};
+  let cookieHeader = '';
+  let hasAuthCookie = false;
   
   try {
     safeLog('[auth-debug] Checking environment variables...');
-    // Check critical environment variables at the start
-    const envInfo = {
+    envInfo = {
       NODE_ENV: process.env.NODE_ENV,
       NEXTAUTH_URL_CONFIGURED: process.env.NEXTAUTH_URL || 'not set',
       NEXTAUTH_URL_DERIVED: getNextAuthURL(),
@@ -24,26 +28,32 @@ export async function GET(request: NextRequest) {
     };
     safeLog('[auth-debug] Environment variables check done', envInfo);
 
-    safeLog('[auth-debug] Attempting to get token...');
-    // Get auth token directly
-    const token = await getToken({
-      req: request,
-      secret: process.env.NEXTAUTH_SECRET || 'dev-only-secret',
-    });
-    safeLog('[auth-debug] getToken result:', { hasToken: !!token });
+    try {
+      safeLog('[auth-debug] Attempting to get token...');
+      token = await getToken({
+        req: request,
+        secret: process.env.NEXTAUTH_SECRET || 'dev-only-secret',
+      });
+      safeLog('[auth-debug] getToken result:', { hasToken: !!token });
+    } catch (tokenError: any) {
+      safeError('[auth-debug] Error during getToken', tokenError);
+      // Continue execution to gather more info if possible
+    }
 
-    safeLog('[auth-debug] Attempting to get session...');
-    // Get server session
-    const session = await getServerSession(authOptions);
-    safeLog('[auth-debug] getServerSession result:', { hasSession: !!session });
+    try {
+      safeLog('[auth-debug] Attempting to get session...');
+      session = await getServerSession(authOptions);
+      safeLog('[auth-debug] getServerSession result:', { hasSession: !!session });
+    } catch (sessionError: any) {
+      safeError('[auth-debug] Error during getServerSession', sessionError);
+      // Continue execution
+    }
 
-    // Basic auth diagnostic
     safeLog('[auth-debug] Checking cookies...');
-    const cookieHeader = request.headers.get('cookie') || '';
-    const hasAuthCookie = cookieHeader.includes('next-auth.session-token');
+    cookieHeader = request.headers.get('cookie') || '';
+    hasAuthCookie = cookieHeader.includes('next-auth.session-token');
     safeLog('[auth-debug] Cookie check done', { hasAuthCookie });
     
-    // Log diagnostic info 
     safeLog('[auth-debug] Preparing final response', {
       hasToken: !!token,
       hasSession: !!session,
@@ -51,23 +61,27 @@ export async function GET(request: NextRequest) {
       cookieExists: hasAuthCookie,
     });
 
-    // Send basic auth status (safe for public viewing)
+    // If we reached here without a major crash, return gathered info
     return NextResponse.json({
       status: 'ok',
-      authenticated: !!token,
-      sessionExists: !!session,
+      authenticated: !!token, // Based on getToken result
+      sessionExists: !!session, // Based on getServerSession result
       cookieExists: hasAuthCookie,
       environment: envInfo,
       timestamp: new Date().toISOString(),
     });
+
   } catch (error: any) {
-    safeError('[auth-debug] Error caught in handler', error);
-    // Return error info but without sensitive details
+    // Catch any unexpected errors not caught by inner try/catch blocks
+    safeError('[auth-debug] Uncaught error in handler', error);
     return NextResponse.json({
       status: 'error',
-      message: 'Authentication diagnostic failed',
+      message: 'Authentication diagnostic failed unexpectedly',
       errorName: error.name || 'UnknownError',
       errorMessage: error.message || 'No message',
+      // Include potentially available info even on error
+      partialEnvironment: envInfo,
+      partialCookieExists: hasAuthCookie,
       timestamp: new Date().toISOString(),
     }, { status: 500 });
   }
