@@ -10,10 +10,10 @@ import { safeLog, safeError } from './utils';
 export const INITIAL_POINTS = 5000;
 
 // Points given to users every month (30 days)
-export const MONTHLY_POINTS = 100;
+export const MONTHLY_POINTS = 5000;
 
 // Maximum points a user can have
-export const MAX_POINTS = 300;
+export const MAX_POINTS = 20000;
 
 // Minimum remaining points warning threshold
 export const LOW_POINTS_WARNING = 10;
