@@ -10,7 +10,7 @@ import { safeLog } from './utils';
 // Hardcoded values for critical auth environment variables
 const HARDCODED_VALUES = {
   NEXTAUTH_URL: 'https://main.d2gwwh0jouqtnx.amplifyapp.com',
-  NEXTAUTH_SECRET: 'WJP6m49zmV7Yo1ZNhQmSDctrZHC2WoayEFe9gGzcAAg='
+  NEXTAUTH_SECRET: '+P4Cht0L+1wPlEs0Vnf531uOKMmqVkiiZJUBiOIyXws='
 };
 
 // Helper function to log environment variable status (without exposing values)
