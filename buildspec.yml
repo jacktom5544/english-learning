@@ -13,8 +13,9 @@ frontend:
         - cat postcss.config.mjs
     build:
       commands:
-        # Set up environment variables
-        - echo "MONGODB_URI=$MONGODB_URI" > .env.local
+        # Set up environment variables - creating a fresh .env.local file
+        - touch .env.local
+        - echo "MONGODB_URI=$MONGODB_URI" >> .env.local
         - echo "NEXTAUTH_URL=$NEXTAUTH_URL" >> .env.local
         - echo "NEXTAUTH_SECRET=$NEXTAUTH_SECRET" >> .env.local
         - echo "DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY" >> .env.local
@@ -27,6 +28,9 @@ frontend:
         - echo "STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SECRET" >> .env.local
         - echo "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY" >> .env.local
         - echo "NODE_ENV=production" >> .env.local
+        - echo "LOG_LEVEL=$LOG_LEVEL" >> .env.local
+        # Debugging - show that env vars exist (safely)
+        - echo "Environment variables have been set to .env.local"
         # Use our special build command for Amplify
         - cp postcss.config.amplify.js postcss.config.mjs
         - npm run build --no-lint
