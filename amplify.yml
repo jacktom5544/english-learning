@@ -19,6 +19,9 @@ frontend:
         # Explicitly install packages to fix build issues
         - npm install jsonwebtoken --save
         - npm install --save-dev typescript @types/react @types/node
+        # Create scripts directory and build.js script
+        - mkdir -p scripts
+        - cp -f $(pwd)/src/scripts/build.js scripts/build.js || true
         # Write environment variables explicitly to .env.local
         - echo "MONGODB_URI=mongodb+srv://blogAdmin:BzvJciCcQ8A4i1DM@cluster0.zp8ls.mongodb.net/english-learning?retryWrites=true&w=majority&appName=Cluster0" >> .env.local
         - echo "NEXTAUTH_SECRET=WJP6m49zmV7Yo1ZNhQmSDctrZHC2WoayEFe9gGzcAAg=" >> .env.local

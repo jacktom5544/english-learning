@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "build:amplify": "NODE_OPTIONS=--max-old-space-size=4096 NEXT_TYPESCRIPT_CHECK=false next build --no-lint --no-typescript",
+    "build:amplify": "NODE_ENV=production SKIP_TYPESCRIPT_CHECK=true node scripts/build.js",
     "build:no-ts": "NEXT_TYPESCRIPT_CHECK=false NODE_OPTIONS=--max-old-space-size=4096 next build --no-lint",
     "start": "next start",
     "lint": "next lint",
