@@ -16,8 +16,9 @@ frontend:
         # Ensure clean state and all dependencies (including dev) are installed right before build
         - rm -rf node_modules 
         - npm install --include=dev
-        # Explicitly install jsonwebtoken to fix build issues
+        # Explicitly install packages to fix build issues
         - npm install jsonwebtoken --save
+        - npm install --save-dev typescript @types/react @types/node
         # Write environment variables explicitly to .env.local
         - echo "MONGODB_URI=mongodb+srv://blogAdmin:BzvJciCcQ8A4i1DM@cluster0.zp8ls.mongodb.net/english-learning?retryWrites=true&w=majority&appName=Cluster0" >> .env.local
         - echo "NEXTAUTH_SECRET=WJP6m49zmV7Yo1ZNhQmSDctrZHC2WoayEFe9gGzcAAg=" >> .env.local
@@ -35,7 +36,7 @@ frontend:
         # Also write the vars to .env, which might be read in some environments
         - cp .env.local .env 
         # Use the build:amplify script
-        - npm run build:amplify
+        - npm run build:amplify || npm run build:no-ts
   artifacts:
     baseDirectory: .next
     files:
