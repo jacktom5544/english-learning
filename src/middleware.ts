@@ -37,6 +37,20 @@ export async function middleware(request: NextRequest) {
     '/api/debug-env',
     '/api/debug-env/public', // Our new public debug endpoint
   ];
+
+  // Define static assets paths that should always bypass middleware
+  const staticPaths = [
+    '/_next/',
+    '/favicon.ico',
+    '/assets/',
+    '/images/',
+    '/static/',
+  ];
+  
+  // Skip middleware for static assets
+  if (staticPaths.some(path => pathname.startsWith(path))) {
+    return NextResponse.next();
+  }
   
   // Check if the current path is a debug path
   const isDebugPath = debugPaths.some(path => 
@@ -70,6 +84,11 @@ export async function middleware(request: NextRequest) {
   const isAdminPath = adminPaths.some(path => 
     pathname === path || pathname.startsWith(`${path}/`)
   );
+  
+  // If path is not protected, auth, or admin, allow without token check
+  if (!isProtectedPath && !isAuthRoute && !isAdminPath) {
+    return NextResponse.next();
+  }
   
   // Get the token with error handling
   let token;
@@ -127,20 +146,32 @@ export async function middleware(request: NextRequest) {
 }
 
 // Configure paths that trigger the middleware
+// Only run middleware on specific paths to avoid CloudFront conflicts
 export const config = {
   matcher: [
+    // Protected routes
     '/dashboard/:path*',
-    '/profile/:path*',
+    '/profile/:path*', 
     '/quiz/:path*',
     '/vocabulary/:path*',
     '/writing/:path*',
-    '/admin/:path*',
     '/subscribe/:path*',
+    
+    // Auth routes
     '/login',
     '/register',
+    
+    // Admin routes
+    '/admin/:path*',
+    
+    // Debug routes
     '/debug-session',
     '/fix-admin-role',
     '/test-admin',
-    '/api/:path*',
-  ],
+    
+    // Specific API routes that need auth
+    '/api/users/:path*',
+    '/api/auth/:path*',
+    '/api/subscriptions/:path*',
+  ]
 }; 
