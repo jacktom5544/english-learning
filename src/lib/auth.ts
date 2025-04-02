@@ -12,7 +12,7 @@ type SubscriptionStatus = 'active' | 'cancelled' | 'inactive';
 if (typeof window === 'undefined') {
   logEnvironmentStatus();
   const url = getNextAuthURL();
-  safeLog('Auth module loaded with NEXTAUTH_URL:', url);
+  safeLog('[auth.ts] Auth module loaded with NEXTAUTH_URL:', url);
 }
 
 // Extend the built-in session types
@@ -51,34 +51,43 @@ declare module "next-auth/jwt" {
 function getNextAuthSecret(): string {
   const secret = process.env.NEXTAUTH_SECRET;
   if (!secret && process.env.NODE_ENV === 'production') {
-    console.error('NEXTAUTH_SECRET is missing in production environment');
+    safeError('[auth.ts] NEXTAUTH_SECRET is missing in production environment');
   }
   return secret || 'dev-only-secret';
 }
 
 // Get the domain for cookies
 function getCookieDomain(): string | undefined {
+  safeLog('[auth.ts] Determining cookie domain...');
+  
   // In Amplify environment, use custom domain if available
   if (isAmplifyEnvironment()) {
+    safeLog('[auth.ts] Amplify environment detected for cookie domain');
     if (process.env.AMPLIFY_APP_DOMAIN) {
+      safeLog('[auth.ts] Amplify custom domain found:', process.env.AMPLIFY_APP_DOMAIN);
       // Use root domain for cookies (strip subdomains)
       const domainParts = process.env.AMPLIFY_APP_DOMAIN.split('.');
       
       // If there are at least 2 parts and not an IP address
       if (domainParts.length >= 2 && isNaN(Number(domainParts[domainParts.length - 1]))) {
         // Get the top two levels of the domain (e.g., example.com from www.example.com)
-        return domainParts.slice(-2).join('.');
+        const rootDomain = domainParts.slice(-2).join('.');
+        safeLog('[auth.ts] Calculated root domain:', rootDomain);
+        return rootDomain;
       }
       
       // Fallback to the whole domain
+      safeLog('[auth.ts] Falling back to full custom domain:', process.env.AMPLIFY_APP_DOMAIN);
       return process.env.AMPLIFY_APP_DOMAIN;
     }
     
     // Default Amplify domain (don't set domain)
+    safeLog('[auth.ts] No custom domain found, using default Amplify domain (undefined)');
     return undefined;
   }
   
   // For localhost, don't set a domain
+  safeLog('[auth.ts] Not in Amplify env, using localhost domain (undefined)');
   return undefined;
 }
 
@@ -91,29 +100,37 @@ export const authOptions: NextAuthOptions = {
         password: { label: 'パスワード', type: 'password' },
       },
       async authorize(credentials) {
+        safeLog('[auth.ts] Authorize function started');
         if (!credentials?.email || !credentials?.password) {
-          safeError('Login attempt with missing credentials');
+          safeError('[auth.ts] Login attempt with missing credentials');
           throw new Error('メールアドレスとパスワードを入力してください');
         }
+        safeLog('[auth.ts] Credentials received:', { email: credentials.email }); // Log email for debugging
 
         try {
+          safeLog('[auth.ts] Attempting to connect to database...');
           await connectToDatabase();
+          safeLog('[auth.ts] Database connection successful');
           
+          safeLog('[auth.ts] Finding user by email:', credentials.email);
           const user = await User.findOne({ email: credentials.email });
+          safeLog('[auth.ts] User find result:', { userExists: !!user });
           
           if (!user) {
-            safeLog('Login attempt with non-existent email', { email: credentials.email });
+            safeError('[auth.ts] Login attempt with non-existent email', { email: credentials.email });
             throw new Error('メールアドレスまたはパスワードが間違っています');
           }
           
+          safeLog('[auth.ts] Comparing password for user:', user._id.toString());
           const isPasswordValid = await user.comparePassword(credentials.password);
+          safeLog('[auth.ts] Password comparison result:', { isValid: isPasswordValid });
           
           if (!isPasswordValid) {
-            safeLog('Failed login attempt (invalid password)', { userId: user._id.toString() });
+            safeError('[auth.ts] Failed login attempt (invalid password)', { userId: user._id.toString() });
             throw new Error('メールアドレスまたはパスワードが間違っています');
           }
           
-          safeLog('User logged in successfully', { userId: user._id.toString() });
+          safeLog('[auth.ts] User logged in successfully, returning user object', { userId: user._id.toString() });
           
           return {
             id: user._id.toString(),
@@ -124,8 +141,13 @@ export const authOptions: NextAuthOptions = {
             points: user.points,
             subscriptionStatus: user.subscriptionStatus as SubscriptionStatus
           };
-        } catch (error) {
-          safeError('Error in authorize function', error);
+        } catch (error: any) {
+          safeError('[auth.ts] Error in authorize function', error);
+          // Check if it's a DB connection error
+          if (error.message && error.message.includes('connect')) {
+             throw new Error('データベース接続エラーが発生しました。');
+          }
+          // Rethrow other errors (like invalid credentials)
           throw error;
         }
       },
@@ -137,10 +159,11 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async jwt({ token, user, account }) {
+      safeLog('[auth.ts] JWT callback started');
       try {
         // Initial sign in
         if (account && user) {
-          safeLog('JWT callback - Initial sign in');
+          safeLog('[auth.ts] JWT callback - Initial sign in', { userId: user.id });
           
           token.id = user.id;
           token.role = user.role;
@@ -149,29 +172,34 @@ export const authOptions: NextAuthOptions = {
           
           // If points or subscription status are missing, try to fetch them from the database
           if (token.points === undefined || token.subscriptionStatus === undefined) {
+            safeLog('[auth.ts] JWT callback - Missing points/subscription, fetching from DB');
             try {
               await connectToDatabase();
               const dbUser = await User.findById(user.id);
               if (dbUser) {
                 token.points = dbUser.points;
                 token.subscriptionStatus = dbUser.subscriptionStatus as SubscriptionStatus;
-                safeLog('User data fetched from database for token');
+                safeLog('[auth.ts] JWT callback - User data fetched from DB');
+              } else {
+                 safeError('[auth.ts] JWT callback - User not found in DB during fetch');
               }
             } catch (error) {
-              safeError('Error fetching user data for token', error);
+              safeError('[auth.ts] JWT callback - Error fetching user data for token', error);
             }
           }
         }
-        
+        safeLog('[auth.ts] JWT callback finished, returning token');
         return token;
       } catch (error) {
-        safeError('Error in jwt callback', error);
-        return token;
+        safeError('[auth.ts] Error in jwt callback', error);
+        return token; // Return existing token on error
       }
     },
     async session({ session, token }) {
+      safeLog('[auth.ts] Session callback started');
       try {
         if (token && session.user) {
+          safeLog('[auth.ts] Session callback - Populating session from token', { tokenId: token.id });
           session.user.id = token.id as string;
           session.user.role = token.role as string;
           session.user.points = token.points as number;
@@ -179,24 +207,27 @@ export const authOptions: NextAuthOptions = {
           
           // If points or subscription status are missing, try to fetch them from the database
           if (session.user.points === undefined || session.user.subscriptionStatus === undefined) {
+            safeLog('[auth.ts] Session callback - Missing points/subscription, fetching from DB');
             try {
               await connectToDatabase();
               const dbUser = await User.findById(session.user.id);
               if (dbUser) {
                 session.user.points = dbUser.points;
                 session.user.subscriptionStatus = dbUser.subscriptionStatus as SubscriptionStatus;
-                safeLog('User data fetched from database for session');
+                safeLog('[auth.ts] Session callback - User data fetched from DB');
+              } else {
+                 safeError('[auth.ts] Session callback - User not found in DB during fetch');
               }
             } catch (error) {
-              safeError('Error fetching user data for session', error);
+              safeError('[auth.ts] Session callback - Error fetching user data for session', error);
             }
           }
         }
-        
+        safeLog('[auth.ts] Session callback finished, returning session');
         return session;
       } catch (error) {
-        safeError('Error in session callback', error);
-        return session;
+        safeError('[auth.ts] Error in session callback', error);
+        return session; // Return existing session on error
       }
     },
   },
@@ -244,14 +275,14 @@ export const authOptions: NextAuthOptions = {
   // Enable logging
   logger: {
     error(code, ...message) {
-      safeError(`NextAuth Error [${code}]`, ...message);
+      safeError(`[auth.ts] NextAuth Error [${code}]`, ...message);
     },
     warn(code, ...message) {
-      safeError(`NextAuth Warning [${code}]`, ...message);
+      safeError(`[auth.ts] NextAuth Warning [${code}]`, ...message);
     },
     debug(code, ...message) {
       if (process.env.NODE_ENV !== 'production') {
-        safeLog(`NextAuth Debug [${code}]`, ...message);
+        safeLog(`[auth.ts] NextAuth Debug [${code}]`, ...message);
       }
     },
   },
