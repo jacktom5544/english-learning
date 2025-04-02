@@ -1,9 +1,12 @@
 import mongoose from 'mongoose';
 import { safeLog, safeError } from './utils';
+import { ENV } from './env';
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/english-learning';
+// Use our ENV helper to ensure we have the MongoDB URI
+const MONGODB_URI = ENV.MONGODB_URI;
 
 if (!MONGODB_URI) {
+  safeError('MONGODB_URI is not defined - check your environment variables');
   throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
 }
 
@@ -37,6 +40,14 @@ export async function connectToDatabase() {
     safeLog('Connecting to MongoDB...', MONGODB_URI.substring(0, 20) + '...');
 
     try {
+      // Log detailed connection information
+      safeLog('MongoDB connection details:', {
+        uri_exists: !!MONGODB_URI,
+        uri_prefix: MONGODB_URI.substring(0, 15) + '...',
+        is_production: ENV.isProduction,
+        is_amplify: ENV.isAWSAmplify,
+      });
+      
       // Clear any existing promise to ensure we get a fresh connection attempt
       cached.mongoose.promise = mongoose.connect(MONGODB_URI, opts);
     } catch (error) {

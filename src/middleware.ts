@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import { NextRequest } from 'next/server';
+import { ENV } from '@/lib/env';
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -27,6 +28,7 @@ export async function middleware(request: NextRequest) {
     '/fix-admin-role',
     '/test-admin',
     '/api/debug-env',
+    '/api/debug-env/public', // Our new public debug endpoint
   ];
   
   // Check if the current path is a debug path
@@ -67,8 +69,8 @@ export async function middleware(request: NextRequest) {
   try {
     token = await getToken({ 
       req: request,
-      // Use the same fallback as in auth.ts
-      secret: process.env.NEXTAUTH_SECRET || '291b0018d2327b4ba9cb49f24ce42ea4'
+      // Use our ENV helper for NextAuth secret
+      secret: ENV.NEXTAUTH_SECRET
     });
   } catch (error) {
     console.error('Error in getToken middleware:', error);
@@ -84,15 +86,14 @@ export async function middleware(request: NextRequest) {
     token = null;
   }
   
-  // TEMPORARY FIX - Print token details for debugging
-  if (isAdminPath && token) {
-    console.log('Admin path access attempt:', {
-      path: pathname,
-      tokenExists: !!token,
-      tokenRole: token.role,
-      tokenId: token.id,
-    });
-  }
+  // Print token details for debugging
+  console.log('Middleware access:', {
+    path: pathname,
+    tokenExists: !!token,
+    tokenRole: token?.role || 'none',
+    NextAuthURLExists: !!ENV.NEXTAUTH_URL,
+    isAWSAmplify: ENV.isAWSAmplify,
+  });
   
   // Redirect logic for protected paths
   if (isProtectedPath && !token) {

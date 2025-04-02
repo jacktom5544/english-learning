@@ -3,9 +3,16 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { connectToDatabase } from '@/lib/db';
 import User from '@/models/User';
 import { safeLog, safeError } from './utils';
+import { ENV, logEnvironmentStatus } from './env';
 
 // Define subscription status type to match what's used in stripe.ts
 type SubscriptionStatus = 'active' | 'cancelled' | 'inactive';
+
+// Log environment variables on module load
+if (typeof window === 'undefined') {
+  logEnvironmentStatus();
+  safeLog('Auth module loaded with NEXTAUTH_URL:', ENV.NEXTAUTH_URL);
+}
 
 // Extend the built-in session types
 declare module "next-auth" {
@@ -161,9 +168,8 @@ export const authOptions: NextAuthOptions = {
     signIn: '/login',
     error: '/login',
   },
-  secret: process.env.NEXTAUTH_SECRET || 
-          '291b0018d2327b4ba9cb49f24ce42ea4', // Use the value from your environment variables
-  debug: process.env.NODE_ENV === 'development',
+  secret: ENV.NEXTAUTH_SECRET,
+  debug: true,
   logger: {
     error(code, ...message) {
       safeError(`NextAuth Error [${code}]`, ...message);
@@ -172,10 +178,8 @@ export const authOptions: NextAuthOptions = {
       safeError(`NextAuth Warning [${code}]`, ...message);
     },
     debug(code, ...message) {
-      // Disable debug logs in production
-      if (process.env.NODE_ENV !== 'production') {
-        safeLog(`NextAuth Debug [${code}]`, ...message);
-      }
+      // Enable debug logs in all environments for now
+      safeLog(`NextAuth Debug [${code}]`, ...message);
     },
   },
 }; 
