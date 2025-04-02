@@ -1,97 +1,65 @@
 import { NextResponse } from 'next/server';
-import connectDB from '@/lib/db';
+import { connectToDatabase } from '@/lib/db';
 import { safeLog, safeError } from '@/lib/utils';
-import mongoose from 'mongoose';
 
+// This endpoint is for diagnostic purposes only
 export async function GET() {
   try {
-    safeLog('[test-mongodb] Testing MongoDB connection...');
-    
-    // Get environment info
-    const envInfo = {
-      nodeEnv: process.env.NODE_ENV,
-      hasMongoUri: !!process.env.MONGODB_URI,
-      mongoUriPrefix: process.env.MONGODB_URI ? 
-        `${process.env.MONGODB_URI.substring(0, 15)}...` : 'not set',
-      mongoUriLength: process.env.MONGODB_URI?.length || 0
-    };
-    
-    safeLog('[test-mongodb] Environment info:', envInfo);
+    // Get MongoDB connection details
+    const mongoUri = process.env.MONGODB_URI || 'not set';
+    const maskedUri = mongoUri.replace(/mongodb\+srv:\/\/([^:]+):[^@]+@/, 'mongodb+srv://$1:***@');
     
     // Test connection
-    const conn = await connectDB();
+    safeLog('Testing MongoDB connection...');
+    const startTime = Date.now();
     
-    // Basic connection info
-    const connectionInfo = {
-      isConnected: !!conn,
-      readyState: mongoose.connection.readyState,
-      readyStateText: ['disconnected', 'connected', 'connecting', 'disconnecting'][mongoose.connection.readyState] || 'unknown'
-    };
+    const { db, client } = await connectToDatabase();
+    const connectionTime = Date.now() - startTime;
     
-    // Try to get database info
-    let dbInfo = {};
+    // Check if connection is alive
+    const pingResult = await db.command({ ping: 1 });
+    const pingSuccess = pingResult?.ok === 1;
     
-    if (conn && mongoose.connection.db) {
-      try {
-        // Test admin operations
-        const pingResult = await mongoose.connection.db.admin().ping();
-        
-        // List databases if possible
-        const dbList = await mongoose.connection.db.admin().listDatabases();
-        
-        // Get some database stats
-        const dbStats = await mongoose.connection.db.stats();
-        
-        dbInfo = {
-          pingSuccess: pingResult?.ok === 1,
-          databaseName: mongoose.connection.db.databaseName,
-          databaseCount: dbList?.databases?.length || 0,
-          collectionCount: dbStats?.collections || 0
-        };
-      } catch (adminError) {
-        safeError('[test-mongodb] Admin operations failed:', adminError);
-        dbInfo = { 
-          adminError: adminError instanceof Error ? adminError.message : 'Unknown error',
-          note: 'This may be normal if the MongoDB user lacks admin privileges'
-        };
-      }
-      
-      // Try to list collections (works with lower privileges)
-      try {
-        if (mongoose.connection.db) {
-          const collections = await mongoose.connection.db.listCollections().toArray();
-          dbInfo = {
-            ...dbInfo,
-            collections: collections.map(c => c.name).slice(0, 5) // Show first 5 only
-          };
-        }
-      } catch (collError) {
-        safeError('[test-mongodb] Collection listing failed:', collError);
-      }
-    }
+    // Fetch a sample user (without password) to verify data access
+    const usersCollection = db.collection('users');
+    const userCount = await usersCollection.countDocuments();
+    const sampleUser = userCount > 0 
+      ? await usersCollection.findOne({}, { projection: { password: 0 } })
+      : null;
     
-    // Return success
-    return NextResponse.json({
-      status: 'connected',
-      message: 'MongoDB connection successful',
-      timestamp: new Date().toISOString(),
-      environment: envInfo,
-      connection: connectionInfo,
-      database: dbInfo
-    });
-  } catch (error) {
-    safeError('[test-mongodb] Connection test failed:', error);
+    // Get server information
+    const serverInfo = await db.command({ buildInfo: 1 });
+    const serverVersion = serverInfo?.version || 'unknown';
     
     return NextResponse.json({
-      status: 'error',
-      message: 'MongoDB connection failed',
-      error: error instanceof Error ? error.message : 'Unknown error',
-      timestamp: new Date().toISOString(),
+      status: 'success',
+      message: 'MongoDB connection test successful',
+      connection: {
+        uri: maskedUri,
+        connectionTimeMs: connectionTime,
+        pingSuccess,
+        serverVersion,
+      },
+      database: {
+        userCount,
+        sampleUser: sampleUser ? {
+          id: sampleUser._id,
+          email: sampleUser.email,
+          // Include other non-sensitive fields
+        } : null,
+      },
       environment: {
         nodeEnv: process.env.NODE_ENV,
-        hasMongoUri: !!process.env.MONGODB_URI,
-        mongoUriLength: process.env.MONGODB_URI?.length || 0
+        nextAuthUrl: process.env.NEXTAUTH_URL,
       }
+    });
+    
+  } catch (error) {
+    safeError('MongoDB connection test failed', error);
+    return NextResponse.json({
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Unknown error',
+      timestamp: new Date().toISOString(),
     }, { status: 500 });
   }
 } 
