@@ -3,6 +3,29 @@ import { authOptions } from '@/lib/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { safeError, safeLog } from '@/lib/utils';
 
+// Fix for NextAuth in AWS Amplify
+// The issue is that NextAuth expects /api/auth/signin, /api/auth/session etc.
+// but Amplify is not correctly passing the path segments to the handler
+function extractNextAuthAction(req: NextRequest): string | null {
+  try {
+    // Parse the URL path to find the NextAuth action (signin, callback, session, etc.)
+    const url = new URL(req.url);
+    const pathParts = url.pathname.split('/');
+    
+    // Look for the part after /api/auth/
+    // The pattern should be /api/auth/[action]
+    const authIndex = pathParts.findIndex(part => part === 'auth');
+    if (authIndex >= 0 && authIndex + 1 < pathParts.length) {
+      return pathParts[authIndex + 1];
+    }
+    
+    return null;
+  } catch (error) {
+    safeError('[NextAuth] Error extracting NextAuth action:', error);
+    return null;
+  }
+}
+
 // Function to fix request URL for AWS Amplify environment
 const fixRequestUrl = (req: NextRequest) => {
   if (process.env.NODE_ENV === 'production') {
@@ -25,6 +48,19 @@ const fixRequestUrl = (req: NextRequest) => {
           get: () => correctedUrl,
           configurable: true
         });
+      }
+      
+      // Extract the NextAuth action from the URL
+      const nextAuthAction = extractNextAuthAction(req);
+      if (nextAuthAction) {
+        // Ensure req.query exists and add the nextauth param
+        safeLog('[NextAuth] Adding nextauth action to request:', nextAuthAction);
+        
+        // Add the query parameter manually
+        // We need to do this because Amplify isn't correctly parsing [...nextauth]
+        const requestWithQuery = req as any;
+        requestWithQuery.query = requestWithQuery.query || {};
+        requestWithQuery.query.nextauth = [nextAuthAction];
       }
     } catch (error) {
       safeError('[NextAuth] Error fixing request URL:', error);
@@ -49,6 +85,61 @@ const withErrorHandling = async (req: NextRequest, handler: (req: NextRequest) =
     
     // Fix the URL before passing to NextAuth
     const fixedReq = fixRequestUrl(req);
+    
+    // Create a direct response for session endpoint
+    if (req.url.includes('/api/auth/session')) {
+      safeLog('[NextAuth] Detected session request, using direct handling');
+      
+      try {
+        // Use NextAuth handler but with extra error handling
+        const response = await handler(fixedReq);
+        
+        // Log the NextAuth response
+        safeLog('[NextAuth] Session Response', {
+          status: response.status,
+          statusText: response.statusText,
+          headers: Object.fromEntries([...response.headers.entries()])
+        });
+        
+        if (!response.ok) {
+          // If there's an error, return an empty session
+          const emptySession = {
+            user: null,
+            expires: new Date(Date.now() + 60 * 60 * 1000).toISOString() // 1 hour
+          };
+          
+          const fallbackResponse = NextResponse.json(emptySession, { status: 200 });
+          fallbackResponse.headers.set('Content-Type', 'application/json');
+          
+          // Add CORS headers
+          fallbackResponse.headers.set('Access-Control-Allow-Credentials', 'true');
+          fallbackResponse.headers.set('Access-Control-Allow-Origin', '*');
+          
+          return fallbackResponse;
+        }
+        
+        return response;
+      } catch (error) {
+        safeError('[NextAuth] Error in session handler:', error);
+        
+        // Return empty session on error
+        const emptySession = {
+          user: null,
+          expires: new Date(Date.now() + 60 * 60 * 1000).toISOString() // 1 hour
+        };
+        
+        const fallbackResponse = NextResponse.json(emptySession, { status: 200 });
+        fallbackResponse.headers.set('Content-Type', 'application/json');
+        
+        // Add CORS headers
+        fallbackResponse.headers.set('Access-Control-Allow-Credentials', 'true');
+        fallbackResponse.headers.set('Access-Control-Allow-Origin', '*');
+        
+        return fallbackResponse;
+      }
+    }
+    
+    // For other NextAuth endpoints, proceed with normal handling
     
     // Call the NextAuth handler and await the response
     const response = await handler(fixedReq);

@@ -61,16 +61,44 @@ export default function Login() {
     setError('');
 
     try {
-      const result = await signIn('credentials', {
-        redirect: false,
-        email,
-        password,
-      });
+      // In production, use our direct signin endpoint
+      if (process.env.NODE_ENV === 'production') {
+        console.log('Using direct signin endpoint in production');
+        const response = await fetch('/api/auth/signin', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ email, password }),
+        });
 
-      if (result?.error) {
-        setError(result.error);
-        setIsLoading(false);
-        return;
+        const data = await response.json();
+
+        if (!response.ok) {
+          setError(data.error || 'ログイン中にエラーが発生しました。');
+          setIsLoading(false);
+          return;
+        }
+
+        // Successful login with direct endpoint
+        if (data.success) {
+          // Force a page refresh to reload session context
+          window.location.href = callbackUrl;
+          return;
+        }
+      } else {
+        // In development, use normal NextAuth
+        const result = await signIn('credentials', {
+          redirect: false,
+          email,
+          password,
+        });
+
+        if (result?.error) {
+          setError(result.error);
+          setIsLoading(false);
+          return;
+        }
       }
 
       // Redirect to dashboard or callback URL
