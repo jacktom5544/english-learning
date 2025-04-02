@@ -23,6 +23,7 @@ alwaysApply: true
 
 -Guide Line
 Make sure the project works in both in local and production(AWS Amplify)
+Don't expose API keys to public
 The production site is already in AWS Amplify
 Next.js 15.2.2(latest Version) with App Router
 TypeScript with strict typing

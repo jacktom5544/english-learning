@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -9,10 +9,51 @@ export default function Login() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
+  const errorParam = searchParams.get('error');
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
+
+  // Check for URL error parameter on mount
+  useEffect(() => {
+    if (errorParam) {
+      if (errorParam === 'CredentialsSignin') {
+        setError('メールアドレスまたはパスワードが間違っています');
+      } else if (errorParam === 'AuthenticationError') {
+        setError('認証エラーが発生しました。再度お試しください');
+      } else {
+        setError(`ログイン中にエラーが発生しました: ${errorParam}`);
+      }
+    }
+  }, [errorParam]);
+
+  // In production, fetch auth debug info
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') {
+      async function checkAuthStatus() {
+        try {
+          const response = await fetch('/api/auth-debug');
+          if (response.ok) {
+            const data = await response.json();
+            setDebugInfo(data);
+            
+            // If there are existing cookies but authentication still fails,
+            // this indicates a potential cookie configuration issue
+            if (data.cookieExists && !data.authenticated) {
+              console.warn('Cookie exists but authentication failed - possible cookie configuration issue');
+            }
+          }
+        } catch (error) {
+          console.error('Error checking auth status:', error);
+        }
+      }
+      
+      checkAuthStatus();
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,7 +75,8 @@ export default function Login() {
 
       // Redirect to dashboard or callback URL
       router.push(callbackUrl);
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Login error:', error);
       setError('ログイン中にエラーが発生しました。');
       setIsLoading(false);
     }

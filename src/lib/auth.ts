@@ -3,7 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { connectToDatabase } from '@/lib/db';
 import User from '@/models/User';
 import { safeLog, safeError } from './utils';
-import { getNextAuthURL, logEnvironmentStatus } from './env';
+import { getNextAuthURL, logEnvironmentStatus, isAmplifyEnvironment } from './env';
 
 // Define subscription status type to match what's used in stripe.ts
 type SubscriptionStatus = 'active' | 'cancelled' | 'inactive';
@@ -54,6 +54,32 @@ function getNextAuthSecret(): string {
     console.error('NEXTAUTH_SECRET is missing in production environment');
   }
   return secret || 'dev-only-secret';
+}
+
+// Get the domain for cookies
+function getCookieDomain(): string | undefined {
+  // In Amplify environment, use custom domain if available
+  if (isAmplifyEnvironment()) {
+    if (process.env.AMPLIFY_APP_DOMAIN) {
+      // Use root domain for cookies (strip subdomains)
+      const domainParts = process.env.AMPLIFY_APP_DOMAIN.split('.');
+      
+      // If there are at least 2 parts and not an IP address
+      if (domainParts.length >= 2 && isNaN(Number(domainParts[domainParts.length - 1]))) {
+        // Get the top two levels of the domain (e.g., example.com from www.example.com)
+        return domainParts.slice(-2).join('.');
+      }
+      
+      // Fallback to the whole domain
+      return process.env.AMPLIFY_APP_DOMAIN;
+    }
+    
+    // Default Amplify domain (don't set domain)
+    return undefined;
+  }
+  
+  // For localhost, don't set a domain
+  return undefined;
 }
 
 export const authOptions: NextAuthOptions = {
@@ -188,9 +214,30 @@ export const authOptions: NextAuthOptions = {
       name: `next-auth.session-token`,
       options: {
         httpOnly: true,
-        sameSite: 'lax',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         path: '/',
         secure: process.env.NODE_ENV === 'production',
+        domain: getCookieDomain(),
+      },
+    },
+    callbackUrl: {
+      name: `next-auth.callback-url`,
+      options: {
+        httpOnly: true,
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+        domain: getCookieDomain(),
+      },
+    },
+    csrfToken: {
+      name: `next-auth.csrf-token`,
+      options: {
+        httpOnly: true,
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production',
+        domain: getCookieDomain(),
       },
     },
   },

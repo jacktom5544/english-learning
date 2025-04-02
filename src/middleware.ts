@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
+import { safeLog, safeError } from '@/lib/utils';
+import { isAmplifyEnvironment } from '@/lib/env';
 
 // Function to determine if a request is going to a static asset
 function isStaticAsset(pathname: string): boolean {
@@ -41,6 +43,22 @@ export async function middleware(request: NextRequest) {
     if (process.env.NODE_ENV === 'production') {
       // Set Cache-Control header for edge compatibility
       response.headers.set('Cache-Control', 'no-store, max-age=0');
+      
+      // Add security headers
+      response.headers.set('X-Content-Type-Options', 'nosniff');
+      response.headers.set('X-Frame-Options', 'DENY');
+      response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+      
+      // Set CORS headers in Amplify environment
+      if (isAmplifyEnvironment()) {
+        const origin = request.headers.get('origin');
+        if (origin) {
+          response.headers.set('Access-Control-Allow-Origin', origin);
+          response.headers.set('Access-Control-Allow-Credentials', 'true');
+          response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+          response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        }
+      }
     }
 
     // Check if route requires authentication
@@ -55,8 +73,19 @@ export async function middleware(request: NextRequest) {
     // Get authentication token
     const token = await getToken({ 
       req: request,
-      secret: getNextAuthSecret()
+      secret: getNextAuthSecret(),
+      cookieName: 'next-auth.session-token',
+      secureCookie: process.env.NODE_ENV === 'production'
     });
+
+    // Debug login issue in production
+    if (process.env.NODE_ENV === 'production') {
+      safeLog('Auth middleware check:', { 
+        path: pathname, 
+        hasToken: !!token, 
+        cookieHeader: request.headers.get('cookie')?.includes('next-auth.session-token') || false
+      });
+    }
 
     // If no token found, redirect to login
     if (!token) {
@@ -68,7 +97,7 @@ export async function middleware(request: NextRequest) {
     // User is authenticated, allow access
     return response;
   } catch (error) {
-    console.error('Middleware error:', error);
+    safeError('Middleware error:', error);
     
     // On error, redirect to login with error parameter
     const url = new URL('/login', request.url);
