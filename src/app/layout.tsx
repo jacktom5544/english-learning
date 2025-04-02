@@ -5,6 +5,7 @@ import "./globals.css";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { UserPointsProvider } from "@/components/providers/UserPointsProvider";
 import AppLayout from "@/components/layout/AppLayout";
+import { Toaster } from "react-hot-toast";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -44,6 +45,14 @@ export default function RootLayout({
         <AuthProvider>
           <UserPointsProvider>
             <AppLayout>{children}</AppLayout>
+            <Toaster position="top-center" toastOptions={{
+              duration: 4000,
+              style: {
+                background: '#333',
+                color: '#fff',
+                maxWidth: '500px',
+              }
+            }} />
           </UserPointsProvider>
         </AuthProvider>
       </body>

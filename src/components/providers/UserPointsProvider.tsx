@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useSession } from 'next-auth/react';
+import { toast } from 'react-hot-toast';
 
 type UserPointsContextType = {
   points: number | null;
@@ -31,14 +32,25 @@ export function UserPointsProvider({ children }: UserPointsProviderProps) {
   const [points, setPoints] = useState<number | null>(null);
   const [pointsUsedThisMonth, setPointsUsedThisMonth] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [retryCount, setRetryCount] = useState<number>(0);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const updatePoints = (newPoints: number, newPointsUsedThisMonth: number) => {
     setPoints(newPoints);
     setPointsUsedThisMonth(newPointsUsedThisMonth);
+    setLastUpdated(new Date());
   };
 
-  const refreshPoints = async () => {
+  const refreshPoints = async (forceRetry = false) => {
     if (!session?.user?.email) return;
+    
+    // If we've tried recently (within 30 seconds), don't retry unless forced
+    if (lastUpdated && !forceRetry) {
+      const timeSinceLastUpdate = Date.now() - lastUpdated.getTime();
+      if (timeSinceLastUpdate < 30000) { // 30 seconds
+        return;
+      }
+    }
     
     setIsLoading(true);
     try {
@@ -47,9 +59,28 @@ export function UserPointsProvider({ children }: UserPointsProviderProps) {
         const data = await res.json();
         setPoints(data.points);
         setPointsUsedThisMonth(data.pointsUsedThisMonth);
+        setLastUpdated(new Date());
+        setRetryCount(0); // Reset retry count on success
+      } else {
+        // Handle specific errors
+        console.error('Failed to fetch user points:', res.status);
+        
+        // If we've tried less than 3 times and got a 401/403/500 error, retry after a delay
+        if (retryCount < 3 && [401, 403, 500, 503].includes(res.status)) {
+          setRetryCount(prev => prev + 1);
+          setTimeout(() => refreshPoints(true), 2000 * retryCount);
+        } else if (points === null) {
+          // Use session points as fallback if we have them and all retries failed
+          setPoints(session?.user?.points as number || 0);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch user points:', error);
+      
+      // Use session points as fallback if we have them
+      if (points === null && session?.user?.points !== undefined) {
+        setPoints(session.user.points as number || 0);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -72,17 +103,24 @@ export function UserPointsProvider({ children }: UserPointsProviderProps) {
         const data = await res.json();
         setPoints(data.points);
         setPointsUsedThisMonth(data.pointsUsedThisMonth);
+        setLastUpdated(new Date());
         return true;
       } else {
         // If we get a 403, it means not enough points
         if (res.status === 403) {
           const data = await res.json();
           setPoints(data.currentPoints);
+          toast.error('ポイントが足りません。');
+        } else {
+          // For other errors, try to refresh points
+          await refreshPoints(true);
+          toast.error('ポイント消費中にエラーが発生しました。');
         }
         return false;
       }
     } catch (error) {
       console.error('Failed to consume points:', error);
+      await refreshPoints(true);
       return false;
     }
   };
@@ -92,6 +130,17 @@ export function UserPointsProvider({ children }: UserPointsProviderProps) {
     if (session?.user?.email) {
       refreshPoints();
     }
+  }, [session?.user?.email]);
+
+  // Set up periodic refresh of points (every 5 minutes)
+  useEffect(() => {
+    if (!session?.user?.email) return;
+    
+    const intervalId = setInterval(() => {
+      refreshPoints();
+    }, 5 * 60 * 1000); // 5 minutes
+    
+    return () => clearInterval(intervalId);
   }, [session?.user?.email]);
 
   return (

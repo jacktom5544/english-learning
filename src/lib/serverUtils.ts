@@ -129,7 +129,8 @@ export async function getCurrentUserWithPoints(): Promise<IUser | null> {
       hasSession: !!session,
       userExists: !!session?.user,
       userEmail: session?.user?.email ? 'present' : 'missing',
-      userRole: session?.user?.role || 'none'
+      userRole: session?.user?.role || 'none',
+      isAmplify: isAWSAmplify()
     });
     
     if (!session?.user?.email) {
@@ -138,7 +139,26 @@ export async function getCurrentUserWithPoints(): Promise<IUser | null> {
     }
     
     // Find user in database
-    const user = await findOneDocument<IUser>(User, { email: session.user.email });
+    let user = await findOneDocument<IUser>(User, { email: session.user.email });
+    
+    // If user not found by email, try by ID as fallback
+    if (!user && session.user.id) {
+      try {
+        user = await findDocumentById<IUser>(User, session.user.id);
+        
+        // If found by ID but email doesn't match, update the email
+        if (user && user.email !== session.user.email) {
+          safeLog('User email mismatch, updating record', {
+            oldEmail: user.email,
+            newEmail: session.user.email
+          });
+          user.email = session.user.email;
+          await user.save();
+        }
+      } catch (error) {
+        safeError('Error finding user by ID:', error);
+      }
+    }
     
     if (!user) {
       safeError('getCurrentUserWithPoints: User not found in database', {

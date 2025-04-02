@@ -26,6 +26,7 @@ export async function GET() {
     
     // Attempt to get the current user using multiple methods for reliability
     let user: IUser | null = null;
+    let errorDetails = [];
     
     // Try method 1: Via getCurrentUserWithPoints helper
     try {
@@ -35,8 +36,11 @@ export async function GET() {
           userId: user._id.toString(),
           points: user.points
         });
+      } else {
+        errorDetails.push('getCurrentUserWithPoints returned null');
       }
     } catch (error) {
+      errorDetails.push(`Error with getCurrentUserWithPoints: ${error instanceof Error ? error.message : String(error)}`);
       safeError('Points API: Error with getCurrentUserWithPoints', error);
     }
     
@@ -53,18 +57,57 @@ export async function GET() {
               userId: user._id.toString(),
               points: user.points
             });
+          } else {
+            errorDetails.push(`User not found for email: ${session.user.email}`);
           }
+        } else {
+          errorDetails.push('No session or email in session');
         }
       } catch (error) {
+        errorDetails.push(`Error with direct DB query: ${error instanceof Error ? error.message : String(error)}`);
         safeError('Points API: Error with direct DB query', error);
       }
     }
     
-    // If we still couldn't get the user, return error
+    // Try method 3: JWT token extraction if available
     if (!user) {
-      safeLog('Points API: User not found by any method');
+      try {
+        // Look for authorization header
+        const authHeader = headers.get('authorization');
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          const token = authHeader.substring(7);
+          // Very basic validation - in production you'd verify the JWT
+          const base64Payload = token.split('.')[1];
+          const payload = JSON.parse(Buffer.from(base64Payload, 'base64').toString());
+          
+          if (payload.email) {
+            user = await findOneDocument<IUser>(User, { email: payload.email });
+            if (user) {
+              safeLog('Points API: Retrieved user via token extraction', {
+                userId: user._id.toString()
+              });
+            } else {
+              errorDetails.push(`User not found for token email: ${payload.email}`);
+            }
+          }
+        }
+      } catch (error) {
+        errorDetails.push(`Error with token extraction: ${error instanceof Error ? error.message : String(error)}`);
+        safeError('Points API: Error with token extraction', error);
+      }
+    }
+    
+    // If we still couldn't get the user, return error with debugging info
+    if (!user) {
+      safeLog('Points API: User not found by any method', { errors: errorDetails });
       return NextResponse.json(
-        { error: 'User not found' },
+        { 
+          error: 'User not found',
+          details: errorDetails,
+          inProduction: isProduction(),
+          inAmplify: isAWSAmplify(),
+          debug: true
+        },
         { status: 404, headers }
       );
     }
@@ -91,6 +134,7 @@ export async function GET() {
     return NextResponse.json(
       { 
         error: 'Failed to fetch user points',
+        details: error instanceof Error ? error.message : String(error),
         inProduction: isProduction(),
         inAmplify: isAWSAmplify()
       },

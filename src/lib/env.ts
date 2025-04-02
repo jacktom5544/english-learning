@@ -42,7 +42,9 @@ export function getEnv(key: string, required = false): string | undefined {
 
 // Check if we're running in AWS Amplify
 export function isAWSAmplify(): boolean {
-  return !!process.env.AWS_REGION;
+  return !!process.env.AWS_REGION || 
+         !!process.env.AWS_LAMBDA_FUNCTION_NAME || 
+         process.env.AMPLIFY_ENVIRONMENT === 'true';
 }
 
 // Check if we're in production mode
@@ -52,6 +54,11 @@ export function isProduction(): boolean {
 
 // Determine if running in Amplify environment
 export function isAmplifyEnvironment(): boolean {
+  // For reliability in production, default to true
+  if (process.env.NODE_ENV === 'production') {
+    return true;
+  }
+  
   // First check if we have explicit environment variable
   if (process.env.AMPLIFY_ENVIRONMENT === 'true') {
     return true;
@@ -65,11 +72,6 @@ export function isAmplifyEnvironment(): boolean {
   // Check NextAuth URL for amplifyapp.com domain
   const nextAuthUrl = process.env.NEXTAUTH_URL || '';
   if (nextAuthUrl.includes('amplifyapp.com')) {
-    return true;
-  }
-  
-  // Force true in production for reliability
-  if (process.env.NODE_ENV === 'production') {
     return true;
   }
   
