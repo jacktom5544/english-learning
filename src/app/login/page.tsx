@@ -69,6 +69,7 @@ export default function Login() {
           headers: {
             'Content-Type': 'application/json',
           },
+          credentials: 'include', // Important for cookies
           body: JSON.stringify({ email, password }),
         });
 
@@ -82,6 +83,8 @@ export default function Login() {
 
         // Successful login with direct endpoint
         if (data.success) {
+          console.log('Login successful, redirecting to:', callbackUrl);
+          
           // Force a page refresh to reload session context
           window.location.href = callbackUrl;
           return;

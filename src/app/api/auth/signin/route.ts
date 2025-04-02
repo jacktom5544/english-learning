@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db';
 import User from '@/models/User';
 import { safeError, safeLog } from '@/lib/utils';
-import { signIn } from 'next-auth/react';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
+import jwt from 'jsonwebtoken';
 
 // Custom route for handling sign-in requests
 // This provides a direct path for login that doesn't rely on catch-all routes
@@ -48,18 +50,69 @@ export async function POST(req: NextRequest) {
       }
       
       // At this point, credentials are valid
-      safeLog('[Signin Direct] Login successful');
+      safeLog('[Signin Direct] Login successful, creating session for user:', user._id.toString());
       
-      return NextResponse.json({ 
+      // Create a token that mimics NextAuth's session token
+      const secret = process.env.NEXTAUTH_SECRET || 'WJP6m49zmV7Yo1ZNhQmSDctrZHC2WoayEFe9gGzcAAg=';
+      const expiresIn = 30 * 24 * 60 * 60; // 30 days in seconds
+      
+      // Create session token that matches NextAuth's format
+      const token = jwt.sign(
+        {
+          id: user._id.toString(),
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          points: user.points || 0,
+          subscriptionStatus: user.subscriptionStatus || 'inactive',
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + expiresIn,
+        },
+        secret
+      );
+      
+      // Create the response
+      const response = NextResponse.json({ 
         success: true,
         redirectUrl: '/dashboard',
         user: {
           id: user._id.toString(),
           name: user.name,
           email: user.email,
-          role: user.role
-        }
+          role: user.role,
+          points: user.points || 0,
+          subscriptionStatus: user.subscriptionStatus || 'inactive'
+        },
+        // Include the session token in the response so the client can set it
+        sessionToken: token
       });
+      
+      // Set cookies directly on the response
+      const secure = process.env.NODE_ENV === 'production';
+      const cookieDomain = process.env.NODE_ENV === 'production' ? '.d2gwwh0jouqtnx.amplifyapp.com' : undefined;
+      
+      // Set the security options for cookies
+      const cookieOptions = {
+        httpOnly: true,
+        secure,
+        sameSite: secure ? 'none' : 'lax',
+        path: '/',
+        maxAge: expiresIn,
+        domain: cookieDomain
+      };
+      
+      // Convert to string for cookie header
+      const cookieString = Object.entries(cookieOptions)
+        .map(([key, value]) => `${key}=${value}`)
+        .join('; ');
+      
+      // Set the full cookie as a header
+      response.headers.set(
+        'Set-Cookie', 
+        `next-auth.session-token=${token}; ${cookieString}`
+      );
+      
+      return response;
     } catch (error) {
       safeError('[Signin Direct] Error during authentication', error);
       
