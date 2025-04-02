@@ -8,6 +8,7 @@ import { IUser } from '@/models/User';
 import { MONTHLY_POINTS, MAX_POINTS, PointSystem } from './pointSystem';
 import { isProduction, isAWSAmplify } from './env';
 import { safeLog, safeError } from './utils';
+import { findDocumentById, findOneDocument } from '@/models/mongoose-utils';
 
 /**
  * Updates user points if 30 days have passed since the last update
@@ -51,7 +52,7 @@ export async function consumePoints(userId: string, pointsToConsume: number): Pr
     // Ensure database connection
     await connectToDatabase();
     
-    const user = await User.findById(userId);
+    const user = await findDocumentById<IUser>(User, userId);
     
     if (!user) {
       safeError('User not found when consuming points', { userId });
@@ -103,7 +104,7 @@ export async function consumePoints(userId: string, pointsToConsume: number): Pr
     // If in development, allow the user to proceed anyway
     if (!isProduction()) {
       safeLog('Development mode: allowing action despite error');
-      const user = await User.findById(userId);
+      const user = await findDocumentById<IUser>(User, userId);
       return user;
     }
     
@@ -116,16 +117,49 @@ export async function consumePoints(userId: string, pointsToConsume: number): Pr
  * @returns Current user with updated points or null if not logged in
  */
 export async function getCurrentUserWithPoints(): Promise<IUser | null> {
-  const session = await getServerSession(authOptions);
-  
-  if (!session?.user?.email) return null;
-  
-  const user = await User.findOne({ email: session.user.email });
-  
-  if (!user) return null;
-  
-  // Check if points need to be updated
-  await updateMonthlyPoints(user);
-  
-  return user;
+  try {
+    // First ensure database connection
+    await connectToDatabase();
+    
+    // Get session
+    const session = await getServerSession(authOptions);
+    
+    // Log session info for debugging
+    safeLog('getCurrentUserWithPoints session check', {
+      hasSession: !!session,
+      userExists: !!session?.user,
+      userEmail: session?.user?.email ? 'present' : 'missing',
+      userRole: session?.user?.role || 'none'
+    });
+    
+    if (!session?.user?.email) {
+      safeLog('getCurrentUserWithPoints: No valid session or email');
+      return null;
+    }
+    
+    // Find user in database
+    const user = await findOneDocument<IUser>(User, { email: session.user.email });
+    
+    if (!user) {
+      safeError('getCurrentUserWithPoints: User not found in database', {
+        email: session.user.email,
+        sessionId: session.user.id
+      });
+      return null;
+    }
+    
+    safeLog('getCurrentUserWithPoints: User found', {
+      userId: user._id.toString(),
+      points: user.points,
+      role: user.role
+    });
+    
+    // Check if points need to be updated
+    await updateMonthlyPoints(user);
+    
+    return user;
+  } catch (error) {
+    safeError('Error in getCurrentUserWithPoints:', error);
+    return null;
+  }
 } 

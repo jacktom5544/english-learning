@@ -14,7 +14,7 @@ function isStaticAsset(pathname: string): boolean {
 // Function to safely get NextAuth secret - this should match auth.ts
 function getNextAuthSecret(): string {
   // Use hardcoded secret for reliability
-  return 'WJP6m49zmV7Yo1ZNhQmSDctrZHC2WoayEFe9gGzcAAg=';
+  return process.env.NEXTAUTH_SECRET || 'WJP6m49zmV7Yo1ZNhQmSDctrZHC2WoayEFe9gGzcAAg=';
 }
 
 // Get the correct NextAuth URL based on environment
@@ -39,7 +39,7 @@ function getCorrectUrl(request: NextRequest): string {
       const url = new URL(request.url);
       
       // Extract the forwarded host from headers (AWS Amplify/CloudFront sets this)
-      const forwardedHost = request.headers.get('x-forwarded-host');
+      const forwardedHost = request.headers.get('x-forwarded-host') || 'main.d2gwwh0jouqtnx.amplifyapp.com';
       
       if (forwardedHost) {
         // Replace the hostname with the forwarded host
@@ -80,13 +80,7 @@ export async function middleware(request: NextRequest) {
   const response = NextResponse.next();
 
   try {
-    // Skip processing for static assets and most API routes
-    if (isStaticAsset(pathname) || 
-        (pathname.startsWith('/api/') && !pathname.startsWith('/api/auth/'))) {
-      return response;
-    }
-    
-    // For AWS CloudFront compatibility, add specific headers
+    // Add CORS headers for all requests in production
     if (process.env.NODE_ENV === 'production') {
       // Set Cache-Control header for edge compatibility
       response.headers.set('Cache-Control', 'no-store, max-age=0');
@@ -96,16 +90,27 @@ export async function middleware(request: NextRequest) {
       response.headers.set('X-Frame-Options', 'DENY');
       response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
       
-      // Set CORS headers in Amplify environment
-      if (isAmplifyEnvironment()) {
-        const origin = request.headers.get('origin');
-        if (origin) {
-          response.headers.set('Access-Control-Allow-Origin', origin);
-          response.headers.set('Access-Control-Allow-Credentials', 'true');
-          response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-          response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-        }
+      // Set CORS headers for all requests to allow cross-origin access
+      const origin = request.headers.get('origin') || '*';
+      response.headers.set('Access-Control-Allow-Origin', origin);
+      response.headers.set('Access-Control-Allow-Credentials', 'true');
+      response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE, PATCH');
+      response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Date, X-Api-Version');
+      
+      // Handle OPTIONS request for CORS preflight
+      if (request.method === 'OPTIONS') {
+        return new NextResponse(null, { 
+          status: 200,
+          headers: response.headers
+        });
       }
+    }
+
+    // Skip processing for static assets and API routes (except auth)
+    // This is important to avoid processing API routes with the auth middleware
+    if (isStaticAsset(pathname) || 
+        (pathname.startsWith('/api/') && !pathname.startsWith('/api/auth/'))) {
+      return response;
     }
 
     // Get the corrected URL to use for authentication
@@ -134,18 +139,11 @@ export async function middleware(request: NextRequest) {
       correctedUrl
     });
 
-    // Fix for AWS Amplify: set x-auth-override-url header to allow next-auth to use the correct URL
-    // This is a workaround for the URL mismatch issue
-    Object.defineProperty(request, 'url', {
-      get: () => correctedUrl,
-      configurable: true
-    });
-
-    // Get authentication token with the overridden request URL
+    // Get authentication token
     const token = await getToken({ 
       req: request,
       secret: nextAuthSecret,
-      secureCookie: true
+      secureCookie: process.env.NODE_ENV === 'production'
     });
 
     // If no token found, redirect to login

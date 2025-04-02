@@ -3,9 +3,16 @@ import { getCurrentUserWithPoints } from '@/lib/serverUtils';
 import { connectToDatabase } from '@/lib/db';
 import { PointSystem } from '@/lib/pointSystem';
 import { isProduction, isAWSAmplify } from '@/lib/env';
-import { safeLog } from '@/lib/utils';
+import { safeLog, safeError } from '@/lib/utils';
 
 export async function GET() {
+  // Create response with CORS headers
+  const headers = new Headers();
+  headers.set('Access-Control-Allow-Origin', '*');
+  headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  headers.set('Access-Control-Allow-Credentials', 'true');
+  
   try {
     await connectToDatabase();
     
@@ -21,7 +28,7 @@ export async function GET() {
     if (!user) {
       return NextResponse.json(
         { error: 'User not found' },
-        { status: 404 }
+        { status: 404, headers }
       );
     }
     
@@ -37,16 +44,30 @@ export async function GET() {
         system_ok: diagnosticPassed,
         ...PointSystem.getDebugInfo()
       }
-    });
+    }, { headers });
   } catch (error) {
-    console.error('Error fetching user points:', error);
+    safeError('Error fetching user points:', error);
     return NextResponse.json(
       { 
         error: 'Failed to fetch user points',
         inProduction: isProduction(),
         inAmplify: isAWSAmplify()
       },
-      { status: 500 }
+      { status: 500, headers }
     );
   }
+}
+
+// Handle OPTIONS requests for CORS preflight
+export async function OPTIONS() {
+  const headers = new Headers();
+  headers.set('Access-Control-Allow-Origin', '*');
+  headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  headers.set('Access-Control-Allow-Credentials', 'true');
+  
+  return new NextResponse(null, { 
+    status: 200,
+    headers
+  });
 } 

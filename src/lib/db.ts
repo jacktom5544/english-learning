@@ -21,15 +21,10 @@ function getMongoDBURI() {
     return process.env.MONGODB_URI;
   }
   
-  // Last resort, use fallback in production
-  if (ENV.isProduction()) {
-    safeLog('[db.ts] Using fallback MongoDB URI in production');
-    return FALLBACK_MONGODB_URI;
-  }
-  
-  // Nothing worked
-  safeError('[db.ts] No valid MongoDB URI found');
-  return '';
+  // Use hardcoded value in .env.local file
+  const envLocal = 'mongodb+srv://blogAdmin:BzvJciCcQ8A4i1DM@cluster0.zp8ls.mongodb.net/english-learning?retryWrites=true&w=majority&appName=Cluster0';
+  safeLog('[db.ts] Using hardcoded MongoDB URI from .env.local');
+  return envLocal;
 }
 
 // Get the MongoDB connection string
@@ -55,10 +50,23 @@ if (!cached.mongoose) {
 let cachedClient: MongoClient | null = null;
 let cachedDb: any = null;
 
+// Track connection errors for exponential backoff
+let connectionAttempts = 0;
+const maxConnectionAttempts = 5;
+
 export async function connectToDatabase() {
   if (cachedClient && cachedDb) {
-    safeLog('Using cached database instance');
-    return { client: cachedClient, db: cachedDb };
+    try {
+      // Check if the connection is still alive with a ping
+      await cachedDb.command({ ping: 1 });
+      safeLog('[db.ts] Using cached database connection');
+      return { client: cachedClient, db: cachedDb };
+    } catch (error) {
+      safeError('[db.ts] Cached database connection failed, will reconnect', error);
+      // Connection died, clear cache
+      cachedClient = null;
+      cachedDb = null;
+    }
   }
 
   if (!MONGODB_URI) {
@@ -66,25 +74,48 @@ export async function connectToDatabase() {
   }
 
   const opts: MongoClientOptions = {
-    // Removed directConnection option, which can cause issues
-    connectTimeoutMS: 10000, // Add a 10-second connection timeout
-    socketTimeoutMS: 45000, // Add a 45-second socket timeout
+    connectTimeoutMS: 15000, // 15-second connection timeout
+    socketTimeoutMS: 45000,  // 45-second socket timeout
+    serverSelectionTimeoutMS: 20000, // 20-second server selection timeout
+    maxPoolSize: 10,         // Limit maximum connections
+    minPoolSize: 1,          // Keep at least one connection open
   };
 
   try {
-    safeLog(`Connecting to MongoDB...`);
+    safeLog(`[db.ts] Connecting to MongoDB (attempt ${connectionAttempts + 1}/${maxConnectionAttempts})...`);
     const client = await MongoClient.connect(MONGODB_URI, opts);
     const db = client.db();
+
+    // Verify connection with a ping
+    await db.command({ ping: 1 });
+    
+    // Reset connection attempts on success
+    connectionAttempts = 0;
 
     cachedClient = client;
     cachedDb = db;
 
-    safeLog('Connected to MongoDB successfully');
+    safeLog('[db.ts] Connected to MongoDB successfully');
     return { client, db };
   } catch (error) {
-    safeError('Failed to connect to MongoDB', error);
-    // Throw a more descriptive error for debugging
-    throw new Error(`Failed to connect to MongoDB: ${error instanceof Error ? error.message : String(error)}`);
+    connectionAttempts++;
+    
+    if (connectionAttempts >= maxConnectionAttempts) {
+      safeError(`[db.ts] Failed to connect to MongoDB after ${maxConnectionAttempts} attempts`, error);
+      connectionAttempts = 0; // Reset for next time
+      throw new Error(`Failed to connect to MongoDB: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    
+    // Calculate exponential backoff delay
+    const backoffDelay = Math.min(1000 * Math.pow(2, connectionAttempts), 10000);
+    
+    safeError(`[db.ts] MongoDB connection attempt ${connectionAttempts} failed, retrying in ${backoffDelay}ms`, error);
+    
+    // Wait before retrying
+    await new Promise(resolve => setTimeout(resolve, backoffDelay));
+    
+    // Retry connection
+    return connectToDatabase();
   }
 }
 
