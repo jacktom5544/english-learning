@@ -2,8 +2,37 @@ import mongoose from 'mongoose';
 import { safeLog, safeError } from './utils';
 import { ENV } from './env';
 
-// Use our ENV helper to ensure we have the MongoDB URI
-const MONGODB_URI = ENV.MONGODB_URI;
+// Define a hardcoded MongoDB URI as fallback for AWS Amplify
+const FALLBACK_MONGODB_URI = 'mongodb+srv://blogAdmin:BzvJciCcQ8A4i1DM@cluster0.zp8ls.mongodb.net/english-learning?retryWrites=true&w=majority&appName=Cluster0';
+
+// Get MongoDB URI from environment or use fallback
+function getMongoDBURI() {
+  // First check if it's available from ENV
+  const envURI = ENV.MONGODB_URI;
+  if (envURI && envURI.length > 20) {
+    safeLog('[db.ts] Using MongoDB URI from environment variables');
+    return envURI;
+  }
+  
+  // Then check direct process.env
+  if (process.env.MONGODB_URI && process.env.MONGODB_URI.length > 20) {
+    safeLog('[db.ts] Using MongoDB URI from process.env');
+    return process.env.MONGODB_URI;
+  }
+  
+  // Last resort, use fallback in production
+  if (ENV.isProduction()) {
+    safeLog('[db.ts] Using fallback MongoDB URI in production');
+    return FALLBACK_MONGODB_URI;
+  }
+  
+  // Nothing worked
+  safeError('[db.ts] No valid MongoDB URI found');
+  return '';
+}
+
+// Get the MongoDB connection string
+const MONGODB_URI = getMongoDBURI();
 
 if (!MONGODB_URI) {
   safeError('[db.ts] MONGODB_URI is not defined - check your environment variables');
@@ -22,6 +51,15 @@ if (!cached.mongoose) {
 }
 
 export async function connectToDatabase() {
+  // Always log the state at the beginning
+  safeLog('[db.ts] Connection request, current state:', {
+    hasCachedConn: !!cached.mongoose.conn,
+    hasCachedPromise: !!cached.mongoose.promise,
+    mongoUriExists: !!MONGODB_URI,
+    mongoUriLength: MONGODB_URI ? MONGODB_URI.length : 0,
+    env: process.env.NODE_ENV
+  });
+
   if (cached.mongoose.conn) {
     // Verify the connection is still alive
     try {
@@ -39,13 +77,13 @@ export async function connectToDatabase() {
   if (!cached.mongoose.promise) {
     const opts: mongoose.ConnectOptions = {
       bufferCommands: false, // Disable buffering - recommended for serverless
-      serverSelectionTimeoutMS: 5000, // Timeout after 5 seconds if no server selected
+      serverSelectionTimeoutMS: 10000, // Double timeout to 10 seconds
       socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
       family: 4, // Use IPv4, skip trying IPv6
-      maxPoolSize: 5, // Adjust pool size for serverless (start smaller)
+      maxPoolSize: ENV.isProduction() ? 10 : 5, // Increase pool size in production
       minPoolSize: 1, // Keep at least one connection open
-      // Use `directConnection` for serverless environments like Amplify
-      directConnection: ENV.isAWSAmplify() || ENV.isProduction(),
+      // Don't use directConnection in serverless - can cause issues
+      directConnection: false,
       // Heartbeat helps keep connection alive, adjust intervals if needed
       heartbeatFrequencyMS: 10000, // Send heartbeat every 10 seconds
     };
@@ -59,10 +97,10 @@ export async function connectToDatabase() {
       // Log detailed connection information
       safeLog('[db.ts] MongoDB connection details:', {
         uri_exists: !!MONGODB_URI,
+        uri_length: MONGODB_URI.length,
         uri_prefix: MONGODB_URI.substring(0, 15) + '...',
         is_production: ENV.isProduction(),
-        is_amplify: ENV.isAWSAmplify(),
-        directConnection_enabled: opts.directConnection
+        is_amplify: ENV.isAWSAmplify()
       });
       
       // Clear any existing promise to ensure we get a fresh connection attempt
@@ -72,7 +110,7 @@ export async function connectToDatabase() {
       safeError('[db.ts] Error during mongoose.connect promise creation:', error);
       cached.mongoose.promise = null;
       // Throw a specific error for connection issues
-      throw new Error(`[db.ts] Failed to create DB connection promise: ${error}`);
+      throw new Error(`データベース接続エラーが発生しました。`);
     }
   }
 
@@ -96,7 +134,7 @@ export async function connectToDatabase() {
     safeError('[db.ts] Error while awaiting mongoose connection promise:', error);
     cached.mongoose.promise = null;
     // Throw a specific error for connection issues
-    throw new Error(`[db.ts] Failed to establish DB connection: ${error}`);
+    throw new Error(`データベース接続エラーが発生しました。`);
   }
 
   return cached.mongoose.conn;

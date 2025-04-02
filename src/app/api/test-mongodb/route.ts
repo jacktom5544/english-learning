@@ -1,117 +1,97 @@
 import { NextResponse } from 'next/server';
-import { MongoClient } from 'mongodb';
-import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm"; // Import AWS SDK SSM Client
-
-// Function to get parameter from SSM
-async function getParameterFromSSM(name: string): Promise<string | null> {
-  // Construct the parameter name as Amplify typically stores it
-  // You might need to adjust the path based on your Amplify App ID and environment name
-  // Check your SSM Parameter Store in the AWS Console to confirm the exact path
-  const amplifyAppId = process.env.AWS_APP_ID; // Amplify usually sets this
-  const amplifyEnvName = process.env.AWS_BRANCH; // Amplify uses branch name as env name
-  
-  if (!amplifyAppId || !amplifyEnvName) {
-    console.error('Could not determine Amplify App ID or Environment Name from standard env vars (AWS_APP_ID, AWS_BRANCH).');
-    // Fallback to trying the direct variable name
-    // return null; 
-  }
-  
-  // Example path structure: /amplify/YOUR_APP_ID/YOUR_ENV_NAME/AMPLIFY_MONGODB_URI 
-  // Note: Amplify might prefix variables, e.g., AMPLIFY_MONGODB_URI
-  // Check your SSM Parameter Store for the exact name!
-  const parameterName = `/amplify/${amplifyAppId}/${amplifyEnvName}/MONGODB_URI`;
-  const fallbackParameterName = `/amplify/${amplifyAppId}/${amplifyEnvName}/AMPLIFY_MONGODB_URI`;
-  
-  console.log(`Attempting to fetch SSM Parameter: ${parameterName} or ${fallbackParameterName}`);
-
-  const client = new SSMClient({});
-  
-  try {
-    const command = new GetParameterCommand({ Name: parameterName, WithDecryption: true });
-    const response = await client.send(command);
-    if (response.Parameter?.Value) {
-      console.log(`Successfully fetched ${parameterName} from SSM.`);
-      return response.Parameter.Value;
-    }
-  } catch (error: any) {
-    if (error.name !== 'ParameterNotFound') {
-        console.warn(`Error fetching ${parameterName} from SSM:`, error);
-    } else {
-        console.log(`${parameterName} not found, trying fallback.`);
-    }
-    // Try fallback name if the first one wasn't found
-    try {
-      const fallbackCommand = new GetParameterCommand({ Name: fallbackParameterName, WithDecryption: true });
-      const fallbackResponse = await client.send(fallbackCommand);
-      if (fallbackResponse.Parameter?.Value) {
-        console.log(`Successfully fetched ${fallbackParameterName} from SSM.`);
-        return fallbackResponse.Parameter.Value;
-      }
-    } catch (fallbackError: any) {
-      if (fallbackError.name !== 'ParameterNotFound') {
-        console.warn(`Error fetching ${fallbackParameterName} from SSM:`, fallbackError);
-      } else {
-        console.log(`${fallbackParameterName} not found either.`);
-      }
-    }
-  }
-  
-  console.warn(`Parameter ${parameterName} (or fallback) not found in SSM.`);
-  return null;
-}
+import connectDB from '@/lib/db';
+import { safeLog, safeError } from '@/lib/utils';
+import mongoose from 'mongoose';
 
 export async function GET() {
-  let uri: string | null | undefined;
-  
   try {
-    // 1. Try getting from standard process.env first
-    uri = process.env.MONGODB_URI;
-    console.log('Attempt 1: Checking process.env.MONGODB_URI...');
-    if (uri) {
-      console.log('Found MONGODB_URI in process.env');
-    } else {
-      console.log('MONGODB_URI not found in process.env. Attempting SSM fetch...');
-      // 2. If not in process.env, try fetching from SSM Parameter Store
-      uri = await getParameterFromSSM('MONGODB_URI');
+    safeLog('[test-mongodb] Testing MongoDB connection...');
+    
+    // Get environment info
+    const envInfo = {
+      nodeEnv: process.env.NODE_ENV,
+      hasMongoUri: !!process.env.MONGODB_URI,
+      mongoUriPrefix: process.env.MONGODB_URI ? 
+        `${process.env.MONGODB_URI.substring(0, 15)}...` : 'not set',
+      mongoUriLength: process.env.MONGODB_URI?.length || 0
+    };
+    
+    safeLog('[test-mongodb] Environment info:', envInfo);
+    
+    // Test connection
+    const conn = await connectDB();
+    
+    // Basic connection info
+    const connectionInfo = {
+      isConnected: !!conn,
+      readyState: mongoose.connection.readyState,
+      readyStateText: ['disconnected', 'connected', 'connecting', 'disconnecting'][mongoose.connection.readyState] || 'unknown'
+    };
+    
+    // Try to get database info
+    let dbInfo = {};
+    
+    if (conn && mongoose.connection.db) {
+      try {
+        // Test admin operations
+        const pingResult = await mongoose.connection.db.admin().ping();
+        
+        // List databases if possible
+        const dbList = await mongoose.connection.db.admin().listDatabases();
+        
+        // Get some database stats
+        const dbStats = await mongoose.connection.db.stats();
+        
+        dbInfo = {
+          pingSuccess: pingResult?.ok === 1,
+          databaseName: mongoose.connection.db.databaseName,
+          databaseCount: dbList?.databases?.length || 0,
+          collectionCount: dbStats?.collections || 0
+        };
+      } catch (adminError) {
+        safeError('[test-mongodb] Admin operations failed:', adminError);
+        dbInfo = { 
+          adminError: adminError instanceof Error ? adminError.message : 'Unknown error',
+          note: 'This may be normal if the MongoDB user lacks admin privileges'
+        };
+      }
+      
+      // Try to list collections (works with lower privileges)
+      try {
+        if (mongoose.connection.db) {
+          const collections = await mongoose.connection.db.listCollections().toArray();
+          dbInfo = {
+            ...dbInfo,
+            collections: collections.map(c => c.name).slice(0, 5) // Show first 5 only
+          };
+        }
+      } catch (collError) {
+        safeError('[test-mongodb] Collection listing failed:', collError);
+      }
     }
-
-    if (!uri) {
-      console.error('Failed to get MONGODB_URI from both process.env and SSM Parameter Store.');
-      return NextResponse.json({
-        success: false,
-        error: "MONGODB_URI could not be resolved from environment variables or SSM Parameter Store."
-      }, { status: 500 });
-    }
     
-    console.log('Testing direct MongoDB connection with MongoClient...');
-    console.log('Using Connection string starting with:', uri.substring(0, 20) + '...');
-    
-    const client = new MongoClient(uri);
-    console.log('Attempting to connect...');
-    await client.connect();
-    console.log('Connected successfully to MongoDB server');
-    
-    const serverInfo = await client.db().admin().serverInfo();
-    const dbList = await client.db().admin().listDatabases();
-    await client.close();
-    console.log('Connection closed properly');
-    
+    // Return success
     return NextResponse.json({
-      success: true,
-      message: "Successfully connected to MongoDB",
-      source: process.env.MONGODB_URI ? 'process.env' : 'SSM Parameter Store',
-      version: serverInfo.version,
-      databases: dbList.databases.map(db => db.name),
-      connection_string_prefix: uri.substring(0, 20) + '...'
+      status: 'connected',
+      message: 'MongoDB connection successful',
+      timestamp: new Date().toISOString(),
+      environment: envInfo,
+      connection: connectionInfo,
+      database: dbInfo
     });
-
-  } catch (error: any) {
-    console.error("MongoDB connection error:", error);
+  } catch (error) {
+    safeError('[test-mongodb] Connection test failed:', error);
+    
     return NextResponse.json({
-      success: false,
-      error: error.message,
-      source_attempted: process.env.MONGODB_URI ? 'process.env' : 'SSM Parameter Store',
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      status: 'error',
+      message: 'MongoDB connection failed',
+      error: error instanceof Error ? error.message : 'Unknown error',
+      timestamp: new Date().toISOString(),
+      environment: {
+        nodeEnv: process.env.NODE_ENV,
+        hasMongoUri: !!process.env.MONGODB_URI,
+        mongoUriLength: process.env.MONGODB_URI?.length || 0
+      }
     }, { status: 500 });
   }
 } 
