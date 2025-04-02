@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { safeLog, safeError } from '@/lib/utils';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
 
 // Get the correct NextAuth URL based on environment (same as middleware.ts)
 function getNextAuthURL(): string {
@@ -46,84 +48,74 @@ function getCorrectUrlFromRequest(req: NextRequest): string {
   }
 }
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    safeLog('[Debug Session] Processing debug request');
+    // Get the session data
+    const session = await getServerSession(authOptions);
     
-    // Get the corrected URL
-    const correctUrl = getCorrectUrlFromRequest(req);
+    // Log session details for debugging
+    safeLog('Session data:', JSON.stringify(session));
     
-    // Get the actual host from headers for debugging
-    const host = req.headers.get('host') || 'unknown';
-    const forwardedHost = req.headers.get('x-forwarded-host') || 'none';
-    const referer = req.headers.get('referer') || 'none';
-    const origin = req.headers.get('origin') || 'none';
-    
-    // Create detailed info about the request for debugging
-    const requestAnalysis = {
-      originalUrl: req.url,
-      correctedUrl: correctUrl,
-      headerHost: host,
-      forwardedHost: forwardedHost,
-      amplify: {
-        detected: process.env.AWS_REGION ? true : false,
-        region: process.env.AWS_REGION || 'none',
-        cloudfrontInfo: req.headers.get('cloudfront-viewer-country') ? 'present' : 'absent'
-      },
-      environment: process.env.NODE_ENV,
-      nodeVersion: process.version
-    };
-    
-    safeLog('[Debug Session] Request Analysis:', requestAnalysis);
-    
-    // Only get basic environment info to identify the issue
-    const responseData = {
-      requestInfo: {
-        url: correctUrl, 
-        actualReqUrl: correctUrl, // Now uses the corrected URL
-        headers: Object.fromEntries(req.headers),
-        hasCookies: !!req.headers.get('cookie'),
-        analysis: requestAnalysis // Include detailed analysis in response
-      },
-      env: {
-        nextAuthUrl: process.env.NEXTAUTH_URL || getNextAuthURL(),
-        nodeEnv: process.env.NODE_ENV,
-        hasSecret: !!process.env.NEXTAUTH_SECRET,
-        isAmplify: process.env.AWS_REGION ? true : false
+    // Return session info with sensitive data masked
+    return NextResponse.json({
+      authenticated: !!session,
+      session: session ? {
+        user: {
+          id: session.user?.id,
+          name: session.user?.name,
+          email: session.user?.email ? `${session.user.email.substring(0, 3)}...` : null,
+          role: session.user?.role,
+          // Include other fields we're interested in checking
+          hasPoints: typeof session.user?.points === 'number',
+          points: session.user?.points,
+          subscriptionStatus: session.user?.subscriptionStatus,
+        },
+        expires: session.expires,
+      } : null,
+      cookies: {
+        count: Object.keys(
+          Object.fromEntries(
+            (headers().get('cookie') || '')
+              .split(';')
+              .map(c => c.trim())
+              .filter(Boolean)
+              .map(c => [c.split('=')[0], '***'])
+          )
+        ).length,
+        names: Object.keys(
+          Object.fromEntries(
+            (headers().get('cookie') || '')
+              .split(';')
+              .map(c => c.trim())
+              .filter(Boolean)
+              .map(c => [c.split('=')[0], '***'])
+          )
+        ),
       }
-    };
-    
-    // Create response with CORS headers
-    const response = NextResponse.json(responseData);
-    
-    // Add CORS headers
-    response.headers.set('Access-Control-Allow-Credentials', 'true');
-    response.headers.set('Access-Control-Allow-Origin', '*');
-    response.headers.set('Access-Control-Allow-Methods', 'GET,OPTIONS');
-    response.headers.set('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
-    
-    return response;
+    });
   } catch (error) {
-    safeError('[Debug Session] Error in debug endpoint:', error);
-    
-    // Create error response with CORS headers
-    const errorResponse = NextResponse.json(
-      { 
-        error: 'Debug error', 
-        message: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : 'No stack trace'
-      },
-      { status: 500 }
-    );
-    
-    // Add CORS headers
-    errorResponse.headers.set('Access-Control-Allow-Credentials', 'true');
-    errorResponse.headers.set('Access-Control-Allow-Origin', '*');
-    errorResponse.headers.set('Access-Control-Allow-Methods', 'GET,OPTIONS');
-    errorResponse.headers.set('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
-    
-    return errorResponse;
+    console.error('Session debug error:', error);
+    return NextResponse.json({
+      authenticated: false,
+      error: 'Failed to get session',
+      details: error instanceof Error ? error.message : String(error)
+    }, { status: 500 });
   }
+}
+
+// Helper function to get request headers
+function headers() {
+  return new Headers(
+    // @ts-ignore - This exists in the edge runtime
+    typeof EdgeRuntime !== 'undefined'
+      ? {}
+      : Object.fromEntries(
+          Object.entries(
+            // @ts-ignore - globalThis is not typed
+            globalThis.CURRENT_INVOCATION?.req?.headers || {}
+          )
+        )
+  );
 }
 
 // Handle OPTIONS for CORS preflight

@@ -146,8 +146,11 @@ export const authOptions: NextAuthOptions = {
           safeLog('[authorize] User authenticated successfully');
           return {
             id: user._id.toString(),
-            name: user.username || 'User',
-            email: user.email
+            name: user.username || user.name || 'User',
+            email: user.email,
+            role: user.role || 'user',
+            points: user.points || 0,
+            subscriptionStatus: user.subscriptionStatus || 'inactive'
           };
         } catch (error) {
           safeError('[authorize] Authentication error', error);
@@ -170,12 +173,18 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
+        token.role = user.role;
+        token.points = user.points;
+        token.subscriptionStatus = user.subscriptionStatus;
       }
       return token;
     },
     async session({ session, token }) {
       if (token && session.user) {
         session.user.id = token.id as string;
+        session.user.role = token.role as string;
+        session.user.points = token.points as number;
+        session.user.subscriptionStatus = token.subscriptionStatus as any;
       }
       return session;
     },

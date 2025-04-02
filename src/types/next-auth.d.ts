@@ -1,6 +1,9 @@
 import "next-auth";
 import { JWT } from "next-auth/jwt";
 
+// Define subscription status type
+type SubscriptionStatus = 'active' | 'inactive' | 'cancelled' | 'free' | string;
+
 declare module "next-auth" {
   interface Session {
     user: {
@@ -10,8 +13,9 @@ declare module "next-auth" {
       image?: string | null;
       role: string;
       points: number;
-      subscriptionStatus: 'inactive' | 'active' | 'cancelled';
+      subscriptionStatus: SubscriptionStatus;
     };
+    expires: string;
   }
 
   interface User {
@@ -19,17 +23,17 @@ declare module "next-auth" {
     name?: string | null;
     email?: string | null;
     image?: string | null;
-    role: string;
-    points: number;
-    subscriptionStatus: 'inactive' | 'active' | 'cancelled';
+    role?: string;
+    points?: number;
+    subscriptionStatus?: SubscriptionStatus;
   }
 }
 
 declare module "next-auth/jwt" {
   interface JWT {
     id: string;
-    role: string;
-    points: number;
-    subscriptionStatus: 'inactive' | 'active' | 'cancelled';
+    role?: string;
+    points?: number;
+    subscriptionStatus?: SubscriptionStatus;
   }
 } 
