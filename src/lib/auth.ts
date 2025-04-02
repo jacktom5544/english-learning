@@ -255,7 +255,8 @@ export const authOptions: NextAuthOptions = {
         sameSite: 'none',
         path: '/',
         secure: true,
-        // Don't set domain for Amplify
+        // For Amplify/CloudFront, set cookie domain to match the forwarded host
+        domain: process.env.NODE_ENV === 'production' ? '.d2gwwh0jouqtnx.amplifyapp.com' : undefined
       },
     },
     callbackUrl: {
@@ -265,7 +266,8 @@ export const authOptions: NextAuthOptions = {
         sameSite: 'none',
         path: '/',
         secure: true,
-        // Don't set domain for Amplify
+        // For Amplify/CloudFront, set cookie domain to match the forwarded host
+        domain: process.env.NODE_ENV === 'production' ? '.d2gwwh0jouqtnx.amplifyapp.com' : undefined
       },
     },
     csrfToken: {
@@ -275,7 +277,8 @@ export const authOptions: NextAuthOptions = {
         sameSite: 'none',
         path: '/',
         secure: true,
-        // Don't set domain for Amplify
+        // For Amplify/CloudFront, set cookie domain to match the forwarded host
+        domain: process.env.NODE_ENV === 'production' ? '.d2gwwh0jouqtnx.amplifyapp.com' : undefined
       },
     },
   },

@@ -31,6 +31,38 @@ function getNextAuthURL(): string {
   return 'http://localhost:3000';
 }
 
+// Override the internal request URL in production environments with the proper domain
+function getCorrectUrl(request: NextRequest): string {
+  // In production, ensure we're using the correct host
+  if (process.env.NODE_ENV === 'production') {
+    try {
+      const url = new URL(request.url);
+      
+      // Extract the forwarded host from headers (AWS Amplify/CloudFront sets this)
+      const forwardedHost = request.headers.get('x-forwarded-host');
+      
+      if (forwardedHost) {
+        // Replace the hostname with the forwarded host
+        url.hostname = forwardedHost;
+        url.protocol = 'https:';
+        url.port = '';
+        
+        safeLog('[middleware] Corrected URL:', { 
+          original: request.url,
+          corrected: url.toString()
+        });
+        
+        return url.toString();
+      }
+    } catch (error) {
+      safeError('[middleware] Error correcting URL:', error);
+    }
+  }
+  
+  // If we couldn't correct it or not in production, return original
+  return request.url;
+}
+
 // Define protected routes that require authentication
 const protectedRoutes = [
   '/dashboard',
@@ -76,6 +108,9 @@ export async function middleware(request: NextRequest) {
       }
     }
 
+    // Get the corrected URL to use for authentication
+    const correctedUrl = getCorrectUrl(request);
+
     // Check if route requires authentication
     const requiresAuth = protectedRoutes.some(route => 
       pathname === route || pathname.startsWith(`${route}/`));
@@ -94,10 +129,19 @@ export async function middleware(request: NextRequest) {
       path: pathname, 
       nextAuthURL,
       hasSecret: !!nextAuthSecret,
-      cookieHeader: request.headers.get('cookie') || 'no cookies'
+      cookieHeader: request.headers.get('cookie') || 'no cookies',
+      originalUrl: request.url,
+      correctedUrl
     });
 
-    // Get authentication token
+    // Fix for AWS Amplify: set x-auth-override-url header to allow next-auth to use the correct URL
+    // This is a workaround for the URL mismatch issue
+    Object.defineProperty(request, 'url', {
+      get: () => correctedUrl,
+      configurable: true
+    });
+
+    // Get authentication token with the overridden request URL
     const token = await getToken({ 
       req: request,
       secret: nextAuthSecret,
@@ -107,7 +151,7 @@ export async function middleware(request: NextRequest) {
     // If no token found, redirect to login
     if (!token) {
       const url = new URL('/login', nextAuthURL);
-      url.searchParams.set('callbackUrl', encodeURI(request.url));
+      url.searchParams.set('callbackUrl', encodeURI(correctedUrl));
       return NextResponse.redirect(url);
     }
 
