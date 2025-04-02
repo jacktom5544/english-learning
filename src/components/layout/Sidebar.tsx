@@ -52,7 +52,7 @@ export default function Sidebar() {
         <div className="flex flex-col flex-grow bg-gray-900 overflow-y-auto">
           <div className="flex items-center h-16 flex-shrink-0 px-4 bg-gray-800">
             <Link href="/dashboard" className="text-white text-lg font-bold">
-              English Learning3
+              English Learning2
             </Link>
           </div>
           <div className="mt-5 flex-1 flex flex-col">
