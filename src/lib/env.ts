@@ -1,8 +1,8 @@
 /**
- * Environment variable loader for AWS Amplify
+ * Secure environment variable loader for AWS Amplify
  * 
- * This file ensures environment variables are properly loaded, especially in AWS Amplify
- * which can sometimes have issues with Next.js environment variable loading.
+ * This file provides secure access to environment variables without exposing
+ * sensitive information in the codebase
  */
 
 // Helper function to log environment variable status (without exposing values)
@@ -12,14 +12,10 @@ export function logEnvironmentStatus() {
   console.log('- MongoDB URI exists:', !!process.env.MONGODB_URI);
   console.log('- NEXTAUTH_URL exists:', !!process.env.NEXTAUTH_URL);
   console.log('- NEXTAUTH_SECRET exists:', !!process.env.NEXTAUTH_SECRET);
-  console.log('- NEXT_PUBLIC vars present:', {
-    cloudinary_name: !!process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
-    cloudinary_key: !!process.env.NEXT_PUBLIC_CLOUDINARY_API_KEY,
-    stripe_key: !!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
-  });
+  console.log('- Environment detected:', isAWSAmplify() ? 'AWS Amplify' : (isProduction() ? 'Production' : 'Development'));
 }
 
-// Safe getter for environment variables with validation
+// Safe environment variable accessor with proper type checking
 export function getEnv(key: string, required = false): string | undefined {
   const value = process.env[key];
   if (required && !value) {
@@ -28,45 +24,98 @@ export function getEnv(key: string, required = false): string | undefined {
   return value;
 }
 
-// MongoDB connection string with fallback
-export function getMongoDBURI(): string {
-  return process.env.MONGODB_URI || 
-    'mongodb+srv://blogAdmin:BzvJciCcQ8A4i1DM@cluster0.zp8ls.mongodb.net/english-learning?retryWrites=true&w=majority&appName=Cluster0';
+// Check if we're running in AWS Amplify
+export function isAWSAmplify(): boolean {
+  return !!process.env.AWS_REGION;
 }
 
-// NextAuth URL with automatic detection
+// Check if we're in production mode
+export function isProduction(): boolean {
+  return process.env.NODE_ENV === 'production';
+}
+
+// Determine proper NextAuth URL based on environment
 export function getNextAuthURL(): string {
-  // Try to get from env first
-  if (process.env.NEXTAUTH_URL) return process.env.NEXTAUTH_URL;
+  // Try to get from env first (preferred)
+  if (process.env.NEXTAUTH_URL) {
+    return process.env.NEXTAUTH_URL;
+  }
   
-  // In Amplify, construct from available info
-  if (process.env.AWS_REGION) {
+  // In AWS Amplify, construct from domain name if available
+  if (isAWSAmplify() && process.env.AMPLIFY_APP_DOMAIN) {
+    return `https://${process.env.AMPLIFY_APP_DOMAIN}`;
+  }
+  
+  // Last resort fallback for AWS Amplify (using hardcoded domain)
+  if (isAWSAmplify()) {
+    console.warn('NEXTAUTH_URL not found, using derived URL for AWS Amplify');
     return 'https://main.d2gwwh0jouqtnx.amplifyapp.com';
   }
   
-  // Fallback for local development
-  return 'http://localhost:3000';
+  // Return localhost for development (non-sensitive)
+  if (!isProduction()) {
+    return 'http://localhost:3000';
+  }
+  
+  // Log an error in production if we can't determine the URL
+  console.error('NEXTAUTH_URL is not set in production environment');
+  return '';
 }
 
-// Export all environment variables
+// Environment variable helper with secure fallbacks
 export const ENV = {
-  MONGODB_URI: getMongoDBURI(),
-  NEXTAUTH_URL: getNextAuthURL(),
-  NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET || '291b0018d2327b4ba9cb49f24ce42ea4', // Fallback is only for development
-  CLOUDINARY: {
-    cloud_name: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'dsxej9fbv',
-    api_key: process.env.NEXT_PUBLIC_CLOUDINARY_API_KEY || '235165475833628',
-    api_secret: process.env.CLOUDINARY_API_SECRET || 'yRFsQBMZjysfzy9F7PHP231wNTs',
+  // Database connection - NO DEFAULT PROVIDED in production
+  get MONGODB_URI(): string {
+    const uri = process.env.MONGODB_URI;
+    if (!uri && isProduction()) {
+      console.error('MONGODB_URI not found in production environment');
+      // Return empty string for production - app will properly show error
+      return '';
+    }
+    // Return the actual URI if available, or empty for development
+    return uri || '';
   },
-  DEEPSEEK: {
-    api_key: process.env.DEEPSEEK_API_KEY || '',
-    base_url: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1',
+  
+  // NextAuth URL - determined dynamically but safely
+  get NEXTAUTH_URL(): string {
+    return getNextAuthURL();
   },
-  STRIPE: {
-    secret_key: process.env.STRIPE_SECRET_KEY || '',
-    publishable_key: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '',
-    webhook_secret: process.env.STRIPE_WEBHOOK_SECRET || '',
+  
+  // NextAuth Secret - NO DEFAULT PROVIDED in production
+  get NEXTAUTH_SECRET(): string {
+    const secret = process.env.NEXTAUTH_SECRET;
+    if (!secret && isProduction()) {
+      console.error('NEXTAUTH_SECRET not found in production environment');
+      return '';
+    }
+    // Return the actual secret if available, or mock for development
+    return secret || 'dev-mode-secret-not-used-in-production';
   },
-  isProduction: process.env.NODE_ENV === 'production',
-  isAWSAmplify: !!process.env.AWS_REGION,
+  
+  // Environment checks
+  isProduction,
+  isAWSAmplify,
+  
+  // System helper to determine if environment is properly configured
+  checkEnvironment(): boolean {
+    // List all required environment variables for production
+    const requiredForProduction = [
+      'MONGODB_URI',
+      'NEXTAUTH_SECRET',
+      'CLOUDINARY_API_SECRET',
+      'DEEPSEEK_API_KEY',
+    ];
+    
+    if (isProduction()) {
+      // Check all required variables exist in production
+      const missingVars = requiredForProduction.filter(key => !process.env[key]);
+      
+      if (missingVars.length > 0) {
+        console.error(`Missing required environment variables: ${missingVars.join(', ')}`);
+        return false;
+      }
+    }
+    
+    return true;
+  }
 }; 

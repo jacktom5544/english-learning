@@ -1,22 +1,19 @@
 import { NextResponse } from 'next/server';
-import { ENV } from '@/lib/env';
+import { isProduction, isAWSAmplify } from '@/lib/env';
 
 // This is a special debug endpoint that doesn't require authentication
-// It only exposes whether variables exist, not their actual values
+// It provides minimal environment variable status without exposing sensitive values
 export async function GET() {
   try {
-    // Return safe information about environment variables (only existence, not values)
+    // Only return existence checks, not actual values
     return NextResponse.json({
       env_status: {
         mongodb: {
           exists: !!process.env.MONGODB_URI,
-          prefix: process.env.MONGODB_URI?.substring(0, 10) || "not_set"
         },
         auth: {
           nextauth_url_exists: !!process.env.NEXTAUTH_URL,
-          nextauth_url_value: process.env.NEXTAUTH_URL || "not_set",
           nextauth_secret_exists: !!process.env.NEXTAUTH_SECRET,
-          nextauth_secret_length: process.env.NEXTAUTH_SECRET?.length || 0
         },
         api_keys: {
           deepseek_api_key_exists: !!process.env.DEEPSEEK_API_KEY,
@@ -27,27 +24,18 @@ export async function GET() {
         },
         misc: {
           node_env: process.env.NODE_ENV || "not_set",
-          log_level: process.env.LOG_LEVEL || "not_set",
-          amplify_env: !!process.env.AWS_REGION ? "aws_amplify" : "not_aws"
+          is_production: isProduction(),
+          is_amplify: isAWSAmplify(),
         }
       },
-      env_helper: {
-        mongodb_uri_exists: !!ENV.MONGODB_URI,
-        mongodb_uri_prefix: ENV.MONGODB_URI.substring(0, 10) + "...",
-        nextauth_url: ENV.NEXTAUTH_URL,
-        nextauth_secret_exists: !!ENV.NEXTAUTH_SECRET,
-        nextauth_secret_length: ENV.NEXTAUTH_SECRET.length,
-        is_amplify: ENV.isAWSAmplify,
-        is_production: ENV.isProduction
-      },
+      // Don't include any actual environment variable values or prefixes
       timestamp: new Date().toISOString(),
       note: "This is a public debug endpoint that safely shows environment variable existence"
     });
   } catch (error) {
     console.error("Error in public debug env endpoint:", error);
     return NextResponse.json({ 
-      error: "Error checking environment", 
-      error_message: error instanceof Error ? error.message : String(error)
+      error: "Error checking environment"
     }, { status: 500 });
   }
 } 

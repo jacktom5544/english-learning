@@ -3,7 +3,7 @@
  * This file contains all configurable values for the point system
  */
 
-import { ENV } from './env';
+import { isProduction, isAWSAmplify } from './env';
 import { safeLog, safeError } from './utils';
 
 // Points given to new users upon registration
@@ -45,7 +45,7 @@ export class PointSystem {
   static diagnosticCheck(): boolean {
     try {
       // Check if we're on AWS Amplify
-      if (ENV.isAWSAmplify) {
+      if (isAWSAmplify()) {
         safeLog('PointSystem diagnostic running on AWS Amplify');
       }
       
@@ -59,12 +59,12 @@ export class PointSystem {
   
   // Calculate if user has enough points
   static hasEnoughPoints(userPoints: number, actionCost: number): boolean {
-    // During system issues, don't restrict users
-    if (!ENV.isProduction) {
-      // In development/testing, always allow point usage
+    // If in development, allow point usage regardless
+    if (!isProduction()) {
       return true;
     }
     
+    // In production, enforce point requirements
     return userPoints >= actionCost;
   }
   
@@ -73,8 +73,8 @@ export class PointSystem {
     return {
       monthly_points: MONTHLY_POINTS,
       max_points: MAX_POINTS,
-      environment: ENV.isProduction ? 'production' : 'development',
-      is_amplify: ENV.isAWSAmplify,
+      environment: isProduction() ? 'production' : 'development',
+      is_amplify: isAWSAmplify(),
       time: new Date().toISOString()
     };
   }

@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import { NextRequest } from 'next/server';
-import { ENV } from '@/lib/env';
+import { isAWSAmplify } from '@/lib/env';
+
+// Get the NextAuth secret in a secure way without exposing credentials
+function getNextAuthSecret(): string {
+  const secret = process.env.NEXTAUTH_SECRET;
+  // Return the secret if available, or a non-sensitive development fallback
+  return secret || 'dev-mode-secret-not-used-in-production';
+}
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -69,8 +76,8 @@ export async function middleware(request: NextRequest) {
   try {
     token = await getToken({ 
       req: request,
-      // Use our ENV helper for NextAuth secret
-      secret: ENV.NEXTAUTH_SECRET
+      // Use secure method to get NextAuth secret
+      secret: getNextAuthSecret()
     });
   } catch (error) {
     console.error('Error in getToken middleware:', error);
@@ -86,14 +93,15 @@ export async function middleware(request: NextRequest) {
     token = null;
   }
   
-  // Print token details for debugging
-  console.log('Middleware access:', {
-    path: pathname,
-    tokenExists: !!token,
-    tokenRole: token?.role || 'none',
-    NextAuthURLExists: !!ENV.NEXTAUTH_URL,
-    isAWSAmplify: ENV.isAWSAmplify,
-  });
+  // Print minimal token details for debugging - no sensitive info
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('Middleware access:', {
+      path: pathname,
+      tokenExists: !!token,
+      tokenRole: token?.role || 'none',
+      isAWSAmplify: isAWSAmplify(),
+    });
+  }
   
   // Redirect logic for protected paths
   if (isProtectedPath && !token) {

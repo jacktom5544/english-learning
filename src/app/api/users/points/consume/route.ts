@@ -4,7 +4,7 @@ import { connectToDatabase } from '@/lib/db';
 import User from '@/models/User';
 import { consumePoints } from '@/lib/serverUtils';
 import { PointSystem } from '@/lib/pointSystem';
-import { ENV } from '@/lib/env';
+import { isProduction, isAWSAmplify } from '@/lib/env';
 import { safeLog, safeError } from '@/lib/utils';
 
 /**
@@ -42,15 +42,15 @@ export async function POST(req: NextRequest) {
       userId: user._id.toString(),
       pointsToConsume,
       currentPoints: user.points,
-      inProduction: ENV.isProduction,
-      inAmplify: ENV.isAWSAmplify
+      inProduction: isProduction(),
+      inAmplify: isAWSAmplify()
     });
 
     // Run diagnostic check
     const diagnosticPassed = PointSystem.diagnosticCheck();
     
     // If in development or if diagnostics fail, and we're not in production, let the user proceed anyway
-    if (!diagnosticPassed && !ENV.isProduction) {
+    if (!diagnosticPassed && !isProduction()) {
       safeLog('Point system diagnostic failed, but allowing action in development');
       return NextResponse.json({
         points: user.points,
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
         error: 'Not enough points', 
         currentPoints: user.points || 0,
         requiredPoints: pointsToConsume,
-        diagnostic: ENV.isProduction ? undefined : PointSystem.getDebugInfo()
+        diagnostic: isProduction() ? undefined : PointSystem.getDebugInfo()
       }, { status: 403 });
     }
 
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
       points: updatedUser.points,
       pointsUsedThisMonth: updatedUser.pointsUsedThisMonth,
       pointsLastUpdated: updatedUser.pointsLastUpdated,
-      diagnostic: ENV.isProduction ? undefined : {
+      diagnostic: isProduction() ? undefined : {
         system_ok: diagnosticPassed,
         ...PointSystem.getDebugInfo()
       }
@@ -87,8 +87,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { 
         error: 'An error occurred while consuming points',
-        inProduction: ENV.isProduction,
-        inAmplify: ENV.isAWSAmplify
+        inProduction: isProduction(),
+        inAmplify: isAWSAmplify()
       },
       { status: 500 }
     );

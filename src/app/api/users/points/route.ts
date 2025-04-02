@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUserWithPoints } from '@/lib/serverUtils';
 import { connectToDatabase } from '@/lib/db';
 import { PointSystem } from '@/lib/pointSystem';
-import { ENV } from '@/lib/env';
+import { isProduction, isAWSAmplify } from '@/lib/env';
 import { safeLog } from '@/lib/utils';
 
 export async function GET() {
@@ -14,8 +14,8 @@ export async function GET() {
     // Log point retrieval attempt for debugging
     safeLog('Points retrieval attempt', {
       userExists: !!user,
-      inProduction: ENV.isProduction,
-      inAmplify: ENV.isAWSAmplify
+      inProduction: isProduction(),
+      inAmplify: isAWSAmplify()
     });
     
     if (!user) {
@@ -33,7 +33,7 @@ export async function GET() {
       pointsUsedThisMonth: user.pointsUsedThisMonth,
       pointsLastUpdated: user.pointsLastUpdated,
       // Include diagnostic info in development or for debugging
-      diagnostics: ENV.isProduction ? undefined : {
+      diagnostics: isProduction() ? undefined : {
         system_ok: diagnosticPassed,
         ...PointSystem.getDebugInfo()
       }
@@ -43,8 +43,8 @@ export async function GET() {
     return NextResponse.json(
       { 
         error: 'Failed to fetch user points',
-        inProduction: ENV.isProduction,
-        inAmplify: ENV.isAWSAmplify
+        inProduction: isProduction(),
+        inAmplify: isAWSAmplify()
       },
       { status: 500 }
     );

@@ -6,7 +6,7 @@ import User from '@/models/User';
 import { connectToDatabase } from '@/lib/db';
 import { IUser } from '@/models/User';
 import { MONTHLY_POINTS, MAX_POINTS, PointSystem } from './pointSystem';
-import { ENV } from './env';
+import { isProduction, isAWSAmplify } from './env';
 import { safeLog, safeError } from './utils';
 
 /**
@@ -63,8 +63,8 @@ export async function consumePoints(userId: string, pointsToConsume: number): Pr
       userId, 
       pointsToConsume, 
       currentPoints: user.points,
-      isProduction: ENV.isProduction,
-      inAmplify: ENV.isAWSAmplify
+      isProduction: isProduction(),
+      inAmplify: isAWSAmplify()
     });
     
     // If the action is free (costs 0 points), just return the user without any point deduction
@@ -101,7 +101,7 @@ export async function consumePoints(userId: string, pointsToConsume: number): Pr
     safeError('Error during point consumption', error);
     
     // If in development, allow the user to proceed anyway
-    if (!ENV.isProduction) {
+    if (!isProduction()) {
       safeLog('Development mode: allowing action despite error');
       const user = await User.findById(userId);
       return user;

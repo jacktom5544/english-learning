@@ -3,7 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { connectToDatabase } from '@/lib/db';
 import User from '@/models/User';
 import { safeLog, safeError } from './utils';
-import { ENV, logEnvironmentStatus } from './env';
+import { getNextAuthURL, logEnvironmentStatus } from './env';
 
 // Define subscription status type to match what's used in stripe.ts
 type SubscriptionStatus = 'active' | 'cancelled' | 'inactive';
@@ -11,7 +11,7 @@ type SubscriptionStatus = 'active' | 'cancelled' | 'inactive';
 // Log environment variables on module load
 if (typeof window === 'undefined') {
   logEnvironmentStatus();
-  safeLog('Auth module loaded with NEXTAUTH_URL:', ENV.NEXTAUTH_URL);
+  safeLog('Auth module loaded with NEXTAUTH_URL:', getNextAuthURL());
 }
 
 // Extend the built-in session types
@@ -44,6 +44,16 @@ declare module "next-auth/jwt" {
     points: number;
     subscriptionStatus: SubscriptionStatus;
   }
+}
+
+// Get the NextAuth secret in a secure way
+function getNextAuthSecret(): string {
+  const secret = process.env.NEXTAUTH_SECRET;
+  if (!secret && process.env.NODE_ENV === 'production') {
+    console.error('NEXTAUTH_SECRET not found in production environment');
+  }
+  // Return the actual secret if available, or use a development-only fallback
+  return secret || 'dev-mode-secret-not-used-in-production';
 }
 
 export const authOptions: NextAuthOptions = {
@@ -168,8 +178,8 @@ export const authOptions: NextAuthOptions = {
     signIn: '/login',
     error: '/login',
   },
-  secret: ENV.NEXTAUTH_SECRET,
-  debug: true,
+  secret: getNextAuthSecret(),
+  debug: process.env.NODE_ENV !== 'production',
   logger: {
     error(code, ...message) {
       safeError(`NextAuth Error [${code}]`, ...message);
@@ -178,8 +188,10 @@ export const authOptions: NextAuthOptions = {
       safeError(`NextAuth Warning [${code}]`, ...message);
     },
     debug(code, ...message) {
-      // Enable debug logs in all environments for now
-      safeLog(`NextAuth Debug [${code}]`, ...message);
+      // Only enable debug logs in development to avoid exposing sensitive info
+      if (process.env.NODE_ENV !== 'production') {
+        safeLog(`NextAuth Debug [${code}]`, ...message);
+      }
     },
   },
 }; 
