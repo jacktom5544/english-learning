@@ -117,12 +117,19 @@ export async function consumePoints(userId: string, pointsToConsume: number): Pr
  * @returns Current user with updated points or null if not logged in
  */
 export async function getCurrentUserWithPoints(): Promise<IUser | null> {
+  const startTime = Date.now();
+  safeLog('[getCurrentUserWithPoints] Starting execution...');
+  
   try {
     // First ensure database connection
+    safeLog('[getCurrentUserWithPoints] Attempting DB connection...');
     await connectToDatabase();
+    safeLog(`[getCurrentUserWithPoints] DB connected. Elapsed: ${Date.now() - startTime}ms`);
     
     // Get session
+    safeLog('[getCurrentUserWithPoints] Attempting to get session...');
     const session = await getServerSession(authOptions);
+    safeLog(`[getCurrentUserWithPoints] Session received. Elapsed: ${Date.now() - startTime}ms`);
     
     // Log session info for debugging
     safeLog('getCurrentUserWithPoints session check', {
@@ -138,13 +145,17 @@ export async function getCurrentUserWithPoints(): Promise<IUser | null> {
       return null;
     }
     
-    // Find user in database
+    // Find user in database by email
+    safeLog(`[getCurrentUserWithPoints] Finding user by email: ${session.user.email}...`);
     let user = await findOneDocument<IUser>(User, { email: session.user.email });
+    safeLog(`[getCurrentUserWithPoints] User lookup by email done. Found: ${!!user}. Elapsed: ${Date.now() - startTime}ms`);
     
     // If user not found by email, try by ID as fallback
     if (!user && session.user.id) {
+      safeLog(`[getCurrentUserWithPoints] User not found by email, trying by ID: ${session.user.id}...`);
       try {
         user = await findDocumentById<IUser>(User, session.user.id);
+        safeLog(`[getCurrentUserWithPoints] User lookup by ID done. Found: ${!!user}. Elapsed: ${Date.now() - startTime}ms`);
         
         // If found by ID but email doesn't match, update the email
         if (user && user.email !== session.user.email) {
@@ -154,6 +165,7 @@ export async function getCurrentUserWithPoints(): Promise<IUser | null> {
           });
           user.email = session.user.email;
           await user.save();
+          safeLog(`[getCurrentUserWithPoints] User email updated. Elapsed: ${Date.now() - startTime}ms`);
         }
       } catch (error) {
         safeError('Error finding user by ID:', error);
@@ -161,7 +173,7 @@ export async function getCurrentUserWithPoints(): Promise<IUser | null> {
     }
     
     if (!user) {
-      safeError('getCurrentUserWithPoints: User not found in database', {
+      safeError('getCurrentUserWithPoints: User not found in database by email or ID', {
         email: session.user.email,
         sessionId: session.user.id
       });
@@ -175,11 +187,15 @@ export async function getCurrentUserWithPoints(): Promise<IUser | null> {
     });
     
     // Check if points need to be updated
+    safeLog(`[getCurrentUserWithPoints] Checking monthly points update for user ${user._id}...`);
     await updateMonthlyPoints(user);
+    safeLog(`[getCurrentUserWithPoints] Monthly points check done. Elapsed: ${Date.now() - startTime}ms`);
     
+    safeLog(`[getCurrentUserWithPoints] Completed successfully. Total time: ${Date.now() - startTime}ms`);
     return user;
   } catch (error) {
     safeError('Error in getCurrentUserWithPoints:', error);
+    safeLog(`[getCurrentUserWithPoints] Failed with error. Total time: ${Date.now() - startTime}ms`);
     return null;
   }
 } 

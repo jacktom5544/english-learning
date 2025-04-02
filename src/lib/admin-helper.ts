@@ -15,25 +15,39 @@ import User, { IUser } from '@/models/User';
  * This works around any session/token issues by directly checking the database
  */
 export async function isUserAdmin(req?: NextRequest): Promise<boolean> {
+  const startTime = Date.now();
+  safeLog('[isUserAdmin] Starting check...');
   try {
     // Get session from NextAuth
+    safeLog('[isUserAdmin] Attempting to get session...');
     const session = await getServerSession(authOptions);
+    safeLog(`[isUserAdmin] Session received. Elapsed: ${Date.now() - startTime}ms`);
     
     // No session or no user
     if (!session?.user?.email) {
-      safeLog('Admin check: No session or email');
+      safeLog('Admin check: No session or email', {
+        hasSession: !!session,
+        hasUser: !!session?.user,
+        hasEmail: !!session?.user?.email
+      });
+      safeLog(`[isUserAdmin] Check failed (no session/email). Total time: ${Date.now() - startTime}ms`);
       return false;
     }
     
     // Connect to DB
+    safeLog('[isUserAdmin] Connecting to DB...');
     await connectToDatabase();
+    safeLog(`[isUserAdmin] DB connected. Elapsed: ${Date.now() - startTime}ms`);
     
     // Find user by email directly in the database
+    safeLog(`[isUserAdmin] Finding user by email: ${session.user.email}...`);
     const user = await findOneDocument<IUser>(User, { email: session.user.email });
+    safeLog(`[isUserAdmin] User lookup done. Found: ${!!user}. Elapsed: ${Date.now() - startTime}ms`);
     
     // User not found
     if (!user) {
-      safeLog('Admin check: User not found in DB');
+      safeLog('Admin check: User not found in DB', { email: session.user.email });
+      safeLog(`[isUserAdmin] Check failed (user not in DB). Total time: ${Date.now() - startTime}ms`);
       return false;
     }
     
@@ -41,13 +55,16 @@ export async function isUserAdmin(req?: NextRequest): Promise<boolean> {
     const isAdmin = user.role === 'admin';
     safeLog(`Admin check: User ${isAdmin ? 'is' : 'is not'} admin`, {
       email: session.user.email,
+      dbUserId: user._id.toString(),
       dbRole: user.role,
       sessionRole: session.user.role
     });
     
+    safeLog(`[isUserAdmin] Check ${isAdmin ? 'passed' : 'failed'}. Total time: ${Date.now() - startTime}ms`);
     return isAdmin;
   } catch (error) {
     safeError('Error checking admin status', error);
+    safeLog(`[isUserAdmin] Check failed (error). Total time: ${Date.now() - startTime}ms`);
     return false;
   }
 }
