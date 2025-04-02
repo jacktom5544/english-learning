@@ -17,33 +17,39 @@ if (typeof window === 'undefined') {
 
 // Extend the built-in session types
 declare module "next-auth" {
-  interface User {
+  // Define the shared properties with the same modifiers for User, Session.user, and JWT
+  interface BaseUserInfo {
     id: string;
-    role: string;
-    points: number;
-    subscriptionStatus: SubscriptionStatus;
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
+    role?: string;
+    points?: number;
+    subscriptionStatus?: SubscriptionStatus;
+  }
+
+  interface User extends BaseUserInfo {
+    // Any additional User-specific properties can go here
   }
   
   interface Session {
-    user: {
-      id: string;
-      name?: string | null;
-      email?: string | null;
-      image?: string | null;
-      role: string;
-      points: number;
-      subscriptionStatus: SubscriptionStatus;
+    user: BaseUserInfo & {
+      // Any additional session user-specific properties can go here
     }
   }
 }
 
 // Extend JWT type
 declare module "next-auth/jwt" {
+  // Define JWT interface with consistent properties
   interface JWT {
     id: string;
-    role: string;
-    points: number;
-    subscriptionStatus: SubscriptionStatus;
+    name?: string | null;
+    email?: string | null;
+    picture?: string | null;
+    role?: string;
+    points?: number;
+    subscriptionStatus?: 'active' | 'cancelled' | 'inactive';
   }
 }
 
@@ -108,6 +114,14 @@ interface UserData {
   subscriptionStatus?: string;
 }
 
+// Type casting helper to ensure correct type
+function ensureSubscriptionStatus(status: string | undefined): SubscriptionStatus {
+  if (status === 'active' || status === 'cancelled' || status === 'inactive') {
+    return status;
+  }
+  return 'inactive'; // Default fallback
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -143,7 +157,12 @@ export const authOptions: NextAuthOptions = {
             throw new Error('メールアドレスまたはパスワードが間違っています');
           }
 
-          safeLog('[authorize] User authenticated successfully');
+          safeLog('[authorize] User authenticated successfully', {
+            id: user._id.toString(),
+            email: user.email,
+            role: user.role || 'user'
+          });
+          
           return {
             id: user._id.toString(),
             name: user.username || user.name || 'User',
@@ -164,31 +183,75 @@ export const authOptions: NextAuthOptions = {
   ],
   pages: {
     signIn: '/login',
+    error: '/login',
   },
   session: {
     strategy: 'jwt',
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
+      // Initial sign in
       if (user) {
+        safeLog('[jwt callback] Updating token with user data', {
+          id: user.id,
+          role: user.role
+        });
+        
         token.id = user.id;
-        token.role = user.role;
-        token.points = user.points;
-        token.subscriptionStatus = user.subscriptionStatus;
+        token.role = user.role as string;
+        token.points = user.points as number;
+        token.subscriptionStatus = ensureSubscriptionStatus(user.subscriptionStatus as string);
       }
+      
+      // Update token when session is updated
+      if (trigger === 'update' && session) {
+        safeLog('[jwt callback] Updating token from session update', {
+          points: session.points,
+          role: session.role
+        });
+        
+        if (session.points !== undefined) {
+          token.points = session.points as number;
+        }
+        if (session.role) {
+          token.role = session.role as string;
+        }
+        if (session.subscriptionStatus) {
+          token.subscriptionStatus = ensureSubscriptionStatus(session.subscriptionStatus as string);
+        }
+      }
+      
       return token;
     },
     async session({ session, token }) {
       if (token && session.user) {
+        safeLog('[session callback] Setting session user data from token', {
+          id: token.id,
+          role: token.role
+        });
+        
         session.user.id = token.id as string;
         session.user.role = token.role as string;
         session.user.points = token.points as number;
-        session.user.subscriptionStatus = token.subscriptionStatus as any;
+        session.user.subscriptionStatus = token.subscriptionStatus as SubscriptionStatus;
       }
       return session;
     },
   },
-  secret: process.env.NEXTAUTH_SECRET,
-  debug: process.env.NODE_ENV === 'development',
+  secret: process.env.NEXTAUTH_SECRET || 'WJP6m49zmV7Yo1ZNhQmSDctrZHC2WoayEFe9gGzcAAg=',
+  debug: process.env.NODE_ENV !== 'production',
+  logger: {
+    error(code, metadata) {
+      safeError(`[NextAuth] Error: ${code}`, metadata);
+    },
+    warn(code) {
+      safeLog(`[NextAuth] Warning: ${code}`);
+    },
+    debug(code, metadata) {
+      if (process.env.NODE_ENV !== 'production') {
+        safeLog(`[NextAuth] Debug: ${code}`, metadata);
+      }
+    },
+  },
 }; 

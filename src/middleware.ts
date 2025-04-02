@@ -106,10 +106,9 @@ export async function middleware(request: NextRequest) {
       }
     }
 
-    // Skip processing for static assets and API routes (except auth)
-    // This is important to avoid processing API routes with the auth middleware
-    if (isStaticAsset(pathname) || 
-        (pathname.startsWith('/api/') && !pathname.startsWith('/api/auth/'))) {
+    // Skip processing for static assets and API routes entirely
+    // This is critical - don't apply auth middleware to API routes at all
+    if (isStaticAsset(pathname) || pathname.startsWith('/api/')) {
       return response;
     }
 

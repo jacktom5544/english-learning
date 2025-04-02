@@ -20,6 +20,7 @@ frontend:
         - echo "MONGODB_URI=mongodb+srv://blogAdmin:BzvJciCcQ8A4i1DM@cluster0.zp8ls.mongodb.net/english-learning?retryWrites=true&w=majority&appName=Cluster0" >> .env.local
         - echo "NEXTAUTH_SECRET=WJP6m49zmV7Yo1ZNhQmSDctrZHC2WoayEFe9gGzcAAg=" >> .env.local
         - echo "NEXTAUTH_URL=https://main.d2gwwh0jouqtnx.amplifyapp.com" >> .env.local
+        - echo "AMPLIFY_ENVIRONMENT=true" >> .env.local
         - echo "STRIPE_SECRET_KEY=$STRIPE_SECRET_KEY" >> .env.local
         - echo "STRIPE_PUBLISHABLE_KEY=$STRIPE_PUBLISHABLE_KEY" >> .env.local
         - echo "STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SECRET" >> .env.local
@@ -59,6 +60,8 @@ nextjsSSR:
       value: https://main.d2gwwh0jouqtnx.amplifyapp.com
     - name: NODE_ENV
       value: production
+    - name: AMPLIFY_ENVIRONMENT
+      value: true
   # List of variables to pass to the SSR computation
   environments:
     - MONGODB_URI
@@ -76,3 +79,4 @@ nextjsSSR:
     - NODE_ENV
     - AWS_REGION
     - AMPLIFY_APP_DOMAIN
+    - AMPLIFY_ENVIRONMENT

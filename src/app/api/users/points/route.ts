@@ -4,7 +4,15 @@ import { connectToDatabase } from '@/lib/db';
 import { PointSystem } from '@/lib/pointSystem';
 import { isProduction, isAWSAmplify } from '@/lib/env';
 import { safeLog, safeError } from '@/lib/utils';
+import User, { IUser } from '@/models/User';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { findOneDocument } from '@/models/mongoose-utils';
 
+/**
+ * API endpoint to get user points
+ * This is a critical endpoint that needs to be highly reliable
+ */
 export async function GET() {
   // Create response with CORS headers
   const headers = new Headers();
@@ -16,16 +24,45 @@ export async function GET() {
   try {
     await connectToDatabase();
     
-    const user = await getCurrentUserWithPoints();
+    // Attempt to get the current user using multiple methods for reliability
+    let user: IUser | null = null;
     
-    // Log point retrieval attempt for debugging
-    safeLog('Points retrieval attempt', {
-      userExists: !!user,
-      inProduction: isProduction(),
-      inAmplify: isAWSAmplify()
-    });
+    // Try method 1: Via getCurrentUserWithPoints helper
+    try {
+      user = await getCurrentUserWithPoints();
+      if (user) {
+        safeLog('Points API: Retrieved user via getCurrentUserWithPoints', {
+          userId: user._id.toString(),
+          points: user.points
+        });
+      }
+    } catch (error) {
+      safeError('Points API: Error with getCurrentUserWithPoints', error);
+    }
     
+    // Try method 2: Via session and direct DB query if first method failed
     if (!user) {
+      try {
+        const session = await getServerSession(authOptions);
+        
+        if (session?.user?.email) {
+          user = await findOneDocument<IUser>(User, { email: session.user.email });
+          
+          if (user) {
+            safeLog('Points API: Retrieved user via direct DB query', {
+              userId: user._id.toString(),
+              points: user.points
+            });
+          }
+        }
+      } catch (error) {
+        safeError('Points API: Error with direct DB query', error);
+      }
+    }
+    
+    // If we still couldn't get the user, return error
+    if (!user) {
+      safeLog('Points API: User not found by any method');
       return NextResponse.json(
         { error: 'User not found' },
         { status: 404, headers }
@@ -35,10 +72,14 @@ export async function GET() {
     // Run diagnostic check to verify system is working
     const diagnosticPassed = PointSystem.diagnosticCheck();
     
+    // Ensure points are a valid number
+    const points = typeof user.points === 'number' ? user.points : 0;
+    const pointsUsedThisMonth = typeof user.pointsUsedThisMonth === 'number' ? user.pointsUsedThisMonth : 0;
+    
     return NextResponse.json({
-      points: user.points,
-      pointsUsedThisMonth: user.pointsUsedThisMonth,
-      pointsLastUpdated: user.pointsLastUpdated,
+      points,
+      pointsUsedThisMonth,
+      pointsLastUpdated: user.pointsLastUpdated || new Date(),
       // Include diagnostic info in development or for debugging
       diagnostics: isProduction() ? undefined : {
         system_ok: diagnosticPassed,

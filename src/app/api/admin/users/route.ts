@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { connectToDatabase } from '@/lib/db';
 import User, { IUser } from '@/models/User';
 import { safeLog, safeError } from '@/lib/utils';
 import { findDocumentsWithOptions } from '@/models/mongoose-utils';
+import { adminRequired, isUserAdmin } from '@/lib/admin-helper';
 
 // Helper function to add CORS headers
 function addCorsHeaders(response: NextResponse) {
@@ -16,60 +15,47 @@ function addCorsHeaders(response: NextResponse) {
 }
 
 export async function GET(req: NextRequest) {
-  // Create a base response to add headers to
-  const baseHeaders = new Headers();
-  baseHeaders.set('Access-Control-Allow-Origin', '*');
-  baseHeaders.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  baseHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  baseHeaders.set('Access-Control-Allow-Credentials', 'true');
-  
-  try {
-    // Get the user's session
-    const session = await getServerSession(authOptions);
+  return adminRequired(req, async () => {
+    // Create a base response to add headers to
+    const baseHeaders = new Headers();
+    baseHeaders.set('Access-Control-Allow-Origin', '*');
+    baseHeaders.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    baseHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    baseHeaders.set('Access-Control-Allow-Credentials', 'true');
     
-    // Log debug info
-    safeLog('Admin users API session', { 
-      hasSession: !!session,
-      userExists: !!session?.user,
-      userRole: session?.user?.role || 'none'
-    });
-    
-    // Check if the user is authenticated and is an admin
-    if (!session || !session.user || session.user.role !== 'admin') {
+    try {
+      // Admin check already done by adminRequired helper
+      safeLog('Admin users API: Access authorized');
+      
+      // Connect to the database
+      await connectToDatabase();
+      
+      // Get all users (exclude sensitive fields)
+      const users = await findDocumentsWithOptions<IUser>(
+        User,
+        {},
+        '-password',
+        { createdAt: -1 }
+      );
+      
+      // Log successful retrieval
+      safeLog('Admin users API success', { userCount: users.length });
+      
       return NextResponse.json(
-        { error: '権限がありません', sessionStatus: { hasSession: !!session, role: session?.user?.role || 'none' } },
-        { status: 403, headers: baseHeaders }
+        { users },
+        { headers: baseHeaders }
+      );
+    } catch (error) {
+      safeError('Error getting users:', error);
+      return NextResponse.json(
+        { 
+          error: 'ユーザー情報の取得中にエラーが発生しました',
+          details: error instanceof Error ? error.message : String(error)
+        },
+        { status: 500, headers: baseHeaders }
       );
     }
-    
-    // Connect to the database
-    await connectToDatabase();
-    
-    // Get all users (exclude sensitive fields)
-    const users = await findDocumentsWithOptions<IUser>(
-      User,
-      {},
-      '-password',
-      { createdAt: -1 }
-    );
-    
-    // Log successful retrieval
-    safeLog('Admin users API success', { userCount: users.length });
-    
-    return NextResponse.json(
-      { users },
-      { headers: baseHeaders }
-    );
-  } catch (error) {
-    safeError('Error getting users:', error);
-    return NextResponse.json(
-      { 
-        error: 'ユーザー情報の取得中にエラーが発生しました',
-        details: error instanceof Error ? error.message : String(error)
-      },
-      { status: 500, headers: baseHeaders }
-    );
-  }
+  });
 }
 
 // Handle OPTIONS requests for CORS preflight
