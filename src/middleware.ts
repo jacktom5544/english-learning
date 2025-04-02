@@ -11,9 +11,24 @@ function isStaticAsset(pathname: string): boolean {
     pathname.startsWith('/api/health'); // Health check endpoint
 }
 
-// Function to safely get NextAuth secret
+// Function to safely get NextAuth secret - this should match auth.ts
 function getNextAuthSecret(): string {
-  return process.env.NEXTAUTH_SECRET || 'dev-only-secret';
+  // Use hardcoded secret for reliability
+  return 'WJP6m49zmV7Yo1ZNhQmSDctrZHC2WoayEFe9gGzcAAg=';
+}
+
+// Get the correct NextAuth URL based on environment
+function getNextAuthURL(): string {
+  // Always use the deployed Amplify URL in production
+  if (process.env.NODE_ENV === 'production') {
+    return 'https://main.d2gwwh0jouqtnx.amplifyapp.com';
+  }
+  // Check for explicitly set NEXTAUTH_URL
+  if (process.env.NEXTAUTH_URL) {
+    return process.env.NEXTAUTH_URL;
+  }
+  // Default to localhost
+  return 'http://localhost:3000';
 }
 
 // Define protected routes that require authentication
@@ -70,26 +85,28 @@ export async function middleware(request: NextRequest) {
       return response;
     }
 
+    // Use consistent values for authentication
+    const nextAuthURL = getNextAuthURL();
+    const nextAuthSecret = getNextAuthSecret();
+    
+    // Enhanced logging for debugging
+    safeLog('Auth middleware check:', { 
+      path: pathname, 
+      nextAuthURL,
+      hasSecret: !!nextAuthSecret,
+      cookieHeader: request.headers.get('cookie') || 'no cookies'
+    });
+
     // Get authentication token
     const token = await getToken({ 
       req: request,
-      secret: getNextAuthSecret(),
-      cookieName: 'next-auth.session-token',
-      secureCookie: process.env.NODE_ENV === 'production'
+      secret: nextAuthSecret,
+      secureCookie: true
     });
-
-    // Debug login issue in production
-    if (process.env.NODE_ENV === 'production') {
-      safeLog('Auth middleware check:', { 
-        path: pathname, 
-        hasToken: !!token, 
-        cookieHeader: request.headers.get('cookie')?.includes('next-auth.session-token') || false
-      });
-    }
 
     // If no token found, redirect to login
     if (!token) {
-      const url = new URL('/login', request.url);
+      const url = new URL('/login', nextAuthURL);
       url.searchParams.set('callbackUrl', encodeURI(request.url));
       return NextResponse.redirect(url);
     }
@@ -100,7 +117,7 @@ export async function middleware(request: NextRequest) {
     safeError('Middleware error:', error);
     
     // On error, redirect to login with error parameter
-    const url = new URL('/login', request.url);
+    const url = new URL('/login', getNextAuthURL());
     url.searchParams.set('error', 'AuthenticationError');
     return NextResponse.redirect(url);
   }

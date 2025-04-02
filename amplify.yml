@@ -30,6 +30,8 @@ frontend:
         - echo "NEXT_PUBLIC_CLOUDINARY_API_KEY=$NEXT_PUBLIC_CLOUDINARY_API_KEY" >> .env.local
         - echo "CLOUDINARY_API_SECRET=$CLOUDINARY_API_SECRET" >> .env.local
         - echo "NODE_ENV=$NODE_ENV" >> .env.local
+        # Also write the vars to .env, which might be read in some environments
+        - cp .env.local .env 
         # Use the build:amplify script
         - npm run build:amplify
   artifacts:
@@ -47,6 +49,17 @@ platform: "web-compute"
 nextjsSSR:
   buildCommand: ""
   preBuildCommand: ""
+  # Define the same environment variables here for runtime
+  environment:
+    - name: MONGODB_URI
+      value: mongodb+srv://blogAdmin:BzvJciCcQ8A4i1DM@cluster0.zp8ls.mongodb.net/english-learning?retryWrites=true&w=majority&appName=Cluster0
+    - name: NEXTAUTH_SECRET
+      value: WJP6m49zmV7Yo1ZNhQmSDctrZHC2WoayEFe9gGzcAAg=
+    - name: NEXTAUTH_URL
+      value: https://main.d2gwwh0jouqtnx.amplifyapp.com
+    - name: NODE_ENV
+      value: production
+  # List of variables to pass to the SSR computation
   environments:
     - MONGODB_URI
     - NEXTAUTH_SECRET
@@ -60,6 +73,6 @@ nextjsSSR:
     - NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
     - NEXT_PUBLIC_CLOUDINARY_API_KEY
     - CLOUDINARY_API_SECRET
-    - NODE_ENV # Include NODE_ENV as well, if needed by your app
+    - NODE_ENV
     - AWS_REGION
     - AMPLIFY_APP_DOMAIN

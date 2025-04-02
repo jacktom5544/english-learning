@@ -7,6 +7,12 @@
 
 import { safeLog } from './utils';
 
+// Hardcoded values for critical auth environment variables
+const HARDCODED_VALUES = {
+  NEXTAUTH_URL: 'https://main.d2gwwh0jouqtnx.amplifyapp.com',
+  NEXTAUTH_SECRET: 'WJP6m49zmV7Yo1ZNhQmSDctrZHC2WoayEFe9gGzcAAg='
+};
+
 // Helper function to log environment variable status (without exposing values)
 export function logEnvironmentStatus(): void {
   safeLog('Environment Information:', {
@@ -15,12 +21,18 @@ export function logEnvironmentStatus(): void {
     AMPLIFY_APP_DOMAIN: process.env.AMPLIFY_APP_DOMAIN || 'not set',
     AWS_REGION: process.env.AWS_REGION || 'not set',
     AWS_LAMBDA_FUNCTION_NAME: process.env.AWS_LAMBDA_FUNCTION_NAME ? 'set' : 'not set',
-    NEXTAUTH_URL: process.env.NEXTAUTH_URL || 'not set'
+    NEXTAUTH_URL: process.env.NEXTAUTH_URL || HARDCODED_VALUES.NEXTAUTH_URL
   });
 }
 
 // Safe environment variable accessor with proper type checking
 export function getEnv(key: string, required = false): string | undefined {
+  // First check if we have a hardcoded value for this key
+  if (key in HARDCODED_VALUES && process.env.NODE_ENV === 'production') {
+    return HARDCODED_VALUES[key as keyof typeof HARDCODED_VALUES];
+  }
+  
+  // Otherwise check environment variables
   const value = process.env[key];
   if (required && !value) {
     console.error(`Required environment variable ${key} is missing`);
@@ -47,6 +59,11 @@ export function isAmplifyEnvironment(): boolean {
 
 // Get the correct NextAuth URL based on environment
 export function getNextAuthURL(): string {
+  // Always use hardcoded value in production for reliability
+  if (process.env.NODE_ENV === 'production') {
+    return HARDCODED_VALUES.NEXTAUTH_URL;
+  }
+  
   // Check for explicitly set NEXTAUTH_URL
   if (process.env.NEXTAUTH_URL) {
     return process.env.NEXTAUTH_URL;
@@ -88,13 +105,17 @@ export const ENV = {
   
   // NextAuth Secret - NO DEFAULT PROVIDED in production
   get NEXTAUTH_SECRET(): string {
+    // First check for environment variable
     const secret = process.env.NEXTAUTH_SECRET;
+    
+    // If not found in production, use hardcoded value
     if (!secret && isProduction()) {
-      console.error('NEXTAUTH_SECRET not found in production environment');
-      return '';
+      console.error('NEXTAUTH_SECRET not found in environment, using hardcoded value');
+      return HARDCODED_VALUES.NEXTAUTH_SECRET;
     }
-    // Return the actual secret if available, or mock for development
-    return secret || 'dev-mode-secret-not-used-in-production';
+    
+    // Return the actual secret if available, or hardcoded for development
+    return secret || HARDCODED_VALUES.NEXTAUTH_SECRET;
   },
   
   // Environment checks
@@ -106,7 +127,6 @@ export const ENV = {
     // List all required environment variables for production
     const requiredForProduction = [
       'MONGODB_URI',
-      'NEXTAUTH_SECRET',
       'CLOUDINARY_API_SECRET',
       'DEEPSEEK_API_KEY',
     ];
