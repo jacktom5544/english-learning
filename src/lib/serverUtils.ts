@@ -9,6 +9,9 @@ import { MONTHLY_POINTS, MAX_POINTS, PointSystem } from './pointSystem';
 import { isProduction, isAWSAmplify } from './env';
 import { safeLog, safeError } from './utils';
 import { findDocumentById, findOneDocument } from '@/models/mongoose-utils';
+import { NextRequest, NextResponse } from 'next/server';
+import getClient from '@/lib/db';
+import { ObjectId } from 'mongodb';
 
 /**
  * Updates user points if 30 days have passed since the last update
@@ -43,83 +46,89 @@ export async function updateMonthlyPoints(user: IUser): Promise<IUser | null> {
 
 /**
  * Consumes points for a user action
- * @param userId User ID
+ * @param userId User ID string
  * @param pointsToConsume Number of points to consume
- * @returns Updated user document or null if not enough points
+ * @returns Updated user document (IUser) or null if not enough points or error
  */
 export async function consumePoints(userId: string, pointsToConsume: number): Promise<IUser | null> {
   try {
-    // Ensure database connection
-    await connectToDatabase();
-    
-    const user = await findDocumentById<IUser>(User, userId);
-    
+    // 1. Find User (Native Read + Mongoose Hydrate via util)
+    // Ensure connectToDatabase is called if needed by findDocumentById
+    // await connectToDatabase(); 
+    const user = await findDocumentById<IUser>(User, userId); 
+
     if (!user) {
       safeError('User not found when consuming points', { userId });
       return null;
     }
-    
-    // Log point consumption attempt
-    safeLog('Point consumption attempt', { 
-      userId, 
-      pointsToConsume, 
-      currentPoints: user.points,
-      isProduction: isProduction(),
-      inAmplify: isAWSAmplify()
-    });
-    
-    // If the action is free (costs 0 points), just return the user without any point deduction
+
+    safeLog('Point consumption attempt', { userId, pointsToConsume, currentPoints: user.points });
+
+    // 2. Handle Free Actions
     if (pointsToConsume === 0) {
       return user;
     }
-    
-    // *** REPLACE Existing safeLog for Checking hasEnoughPoints ***
-    const userPoints = user.points;
-    const isProd = isProduction();
-    const check = userPoints >= pointsToConsume;
-    console.log(`[INFO] Checking hasEnoughPoints: userId=${userId}, userPointsValue=${userPoints}, userPointsType=${typeof userPoints}, actionCostValue=${pointsToConsume}, actionCostType=${typeof pointsToConsume}, isProduction=${isProd}, checkResult=${check}`);
 
-    // *** Replace the PointSystem.hasEnoughPoints check ***
-    let hasEnough = true; // Default to true (allows non-production use)
-    if (isProd) { // Only perform the check in production
+    // 3. Check If Enough Points (Direct comparison)
+    const isProd = isProduction();
+    let hasEnough = true;
+    if (isProd) {
         hasEnough = (user.points >= pointsToConsume);
     }
 
-    // Check the result
-    if (!hasEnough) { 
-      safeLog('Not enough points for action', { 
-        userId, 
-        pointsToConsume, 
-        currentPoints: user.points 
-      });
-      return null; // Return null if not enough points (in production)
+    if (!hasEnough) {
+      safeLog('Not enough points for action', { userId, pointsToConsume, currentPoints: user.points });
+      return null;
     }
-    
-    // Update user points (only runs if hasEnough is true)
-    user.points -= pointsToConsume;
-    user.pointsUsedThisMonth += pointsToConsume;
-    
-    // Save the updated user
-    await user.save();
-    
-    safeLog('Points consumed successfully', { 
-      userId, 
-      pointsConsumed: pointsToConsume, 
-      remainingPoints: user.points 
-    });
-    
-    return user;
+
+    // 4. Perform Native Update
+    const { db } = await getClient();
+    const usersCollection = db.collection('users');
+    const userObjectId = new ObjectId(userId); // Convert string ID back to ObjectId for query
+
+    safeLog(`Attempting native update for user ${userId}`); // Log before update
+    const updateResult = await usersCollection.updateOne(
+        { _id: userObjectId },
+        {
+            $inc: {
+                points: -pointsToConsume,
+                pointsUsedThisMonth: pointsToConsume
+            }
+        }
+    );
+    safeLog(`Native update result for user ${userId}`, { matchedCount: updateResult.matchedCount, modifiedCount: updateResult.modifiedCount }); // Log update result
+
+    // 5. Verify Update and Re-fetch for Return
+    if (updateResult.modifiedCount === 1) {
+        safeLog(`Native update successful for ${userId}, attempting re-fetch...`); // Log before re-fetch
+        // Re-fetch the updated document using native driver
+        const updatedUserDoc = await usersCollection.findOne({ _id: userObjectId });
+
+        if (updatedUserDoc) {
+            safeLog(`Successfully re-fetched user ${userId}`); // Log successful re-fetch
+            // Hydrate the native doc back into a Mongoose doc for return consistency
+            const hydratedUser = User.hydrate(updatedUserDoc);
+            safeLog('Points consumed successfully (Native Update)', { userId, pointsConsumed: pointsToConsume, remainingPoints: hydratedUser.points });
+            return hydratedUser;
+        } else {
+            // Should not happen if update succeeded, but handle defensively
+            safeError(`Failed to re-fetch user after native points update`, { userId });
+            safeLog(`Returning null because re-fetch failed for user ${userId}`); // Explicit log
+            return null; // Treat as error
+        }
+    } else {
+        // Update failed (maybe document didn't exist anymore?)
+        safeError(`Native points update failed (modifiedCount !== 1)`, { userId, updateResult });
+        safeLog(`Returning null because modifiedCount !== 1 for user ${userId}`); // Explicit log
+        return null; // Treat as error
+    }
+
   } catch (error) {
-    safeError('Error during point consumption', error);
-    
-    // If in development, allow the user to proceed anyway
-    if (!isProduction()) {
-      safeLog('Development mode: allowing action despite error');
-      const user = await findDocumentById<IUser>(User, userId);
-      return user;
-    }
-    
-    return null;
+    safeError('Error during point consumption process', { userId, error });
+    safeLog(`Returning null due to caught error for user ${userId}`); // Explicit log in catch
+    // Catch block now handles errors from findDocumentById, getClient, updateOne, findOne, or hydrate
+    // Return null in production for any caught error
+    return isProduction() ? null : await findDocumentById<IUser>(User, userId); // Dev fallback: return original user state on error
   }
 }
 
