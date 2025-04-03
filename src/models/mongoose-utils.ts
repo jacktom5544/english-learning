@@ -1,5 +1,6 @@
 import mongoose, { Model, Document } from 'mongoose';
 import { safeError, safeLog } from '@/lib/utils';
+import connectDB from '@/lib/db'; // Import the function that returns the native db object
 
 /**
  * Type-safe wrapper functions for Mongoose operations
@@ -25,40 +26,51 @@ export async function findDocuments<T>(
 }
 
 /**
- * Safe wrapper for Model.findById
+ * Safe wrapper for findById using NATIVE driver
  */
 export async function findDocumentById<T>(
-  model: Model<any>,
+  model: Model<any>, // Keep model parameter for consistency, but use modelName
   id: string
 ): Promise<T | null> {
+  let db;
   try {
-    const query: any = model.findById(id);
-    return await query.exec() as T | null;
+    const { db: nativeDb } = await connectDB();
+    db = nativeDb;
+    const collectionName = model.collection.name;
+    safeLog(`[native-utils] Executing native findOne on ${collectionName} with filter:`, { _id: new mongoose.Types.ObjectId(id) });
+    const startTime = Date.now();
+    // Use native findOne with ObjectId conversion
+    const result = await db.collection(collectionName).findOne({ _id: new mongoose.Types.ObjectId(id) });
+    const duration = Date.now() - startTime;
+    safeLog(`[native-utils] native findOne by ID on ${collectionName} completed in ${duration}ms. Found: ${!!result}`);
+    return result as T | null; // Cast result
   } catch (error) {
-    safeError('Error in findDocumentById:', error);
+    safeError(`[native-utils] Error executing native findOne by ID on ${model.collection.name}:`, error);
     return null;
   }
 }
 
 /**
- * Safe wrapper for Model.findOne
+ * Safe wrapper for findOne using NATIVE driver
  */
 export async function findOneDocument<T>(
-  model: Model<any>,
+  model: Model<any>, // Keep model parameter for consistency, but use modelName
   filter: Record<string, any>
 ): Promise<T | null> {
+  let db;
   try {
-    const modelName = model.modelName;
-    safeLog(`[mongoose-utils] Executing findOne on ${modelName} with filter:`, filter);
-    const query: any = model.findOne(filter);
+    const { db: nativeDb } = await connectDB();
+    db = nativeDb;
+    const collectionName = model.collection.name; // Get collection name from model
+    safeLog(`[native-utils] Executing native findOne on ${collectionName} with filter:`, filter);
     const startTime = Date.now();
-    const result = await query.exec() as T | null;
+    // Use native findOne
+    const result = await db.collection(collectionName).findOne(filter);
     const duration = Date.now() - startTime;
-    safeLog(`[mongoose-utils] findOne on ${modelName} completed in ${duration}ms. Found: ${!!result}`);
-    return result;
+    safeLog(`[native-utils] native findOne on ${collectionName} completed in ${duration}ms. Found: ${!!result}`);
+    return result as T | null; // Cast result
   } catch (error) {
-    // Log the specific error from findOne execution
-    safeError(`[mongoose-utils] Error executing findOne on ${model.modelName}:`, error);
+    safeError(`[native-utils] Error executing native findOne on ${model.collection.name}:`, error);
     return null;
   }
 }
