@@ -21,11 +21,17 @@ export async function isUserAdmin(req?: NextRequest): Promise<boolean> {
     // Get session from NextAuth
     safeLog('[isUserAdmin] Attempting to get session...');
     const session = await getServerSession(authOptions);
-    safeLog(`[isUserAdmin] Session received. Elapsed: ${Date.now() - startTime}ms`);
+    // Log detailed session info retrieved *within* this function
+    safeLog('[isUserAdmin] Session object retrieved:', session ? { 
+      userExists: !!session.user, 
+      email: session.user?.email ? 'present' : 'missing', 
+      role: session.user?.role 
+    } : 'null session');
+    safeLog(`[isUserAdmin] Session retrieved. Elapsed: ${Date.now() - startTime}ms`);
     
     // No session or no user
     if (!session?.user?.email) {
-      safeLog('Admin check: No session or email', {
+      safeLog('[isUserAdmin] Check failed: No session or email found inside isUserAdmin', {
         hasSession: !!session,
         hasUser: !!session?.user,
         hasEmail: !!session?.user?.email
@@ -36,35 +42,43 @@ export async function isUserAdmin(req?: NextRequest): Promise<boolean> {
     
     // Connect to DB
     safeLog('[isUserAdmin] Connecting to DB...');
-    await connectToDatabase();
-    safeLog(`[isUserAdmin] DB connected. Elapsed: ${Date.now() - startTime}ms`);
+    await connectToDatabase(); // Ensure DB connection is attempted
+    safeLog(`[isUserAdmin] DB connected or connection attempt made. Elapsed: ${Date.now() - startTime}ms`);
     
     // Find user by email directly in the database
-    safeLog(`[isUserAdmin] Finding user by email: ${session.user.email}...`);
-    const user = await findOneDocument<IUser>(User, { email: session.user.email });
-    safeLog(`[isUserAdmin] User lookup done. Found: ${!!user}. Elapsed: ${Date.now() - startTime}ms`);
-    
-    // User not found
+    const userEmail = session.user.email;
+    safeLog(`[isUserAdmin] Finding user in DB by email: ${userEmail}...`);
+    let user: IUser | null = null;
+    let dbError: any = null;
+    try {
+      user = await findOneDocument<IUser>(User, { email: userEmail });
+    } catch (error) {
+      dbError = error;
+      safeError('[isUserAdmin] Error during findOneDocument:', error);
+    }
+    safeLog(`[isUserAdmin] User lookup done. Found: ${!!user}. DB Error: ${dbError ? 'Yes' : 'No'}. Elapsed: ${Date.now() - startTime}ms`);
+
+    // User not found or DB error
     if (!user) {
-      safeLog('Admin check: User not found in DB', { email: session.user.email });
-      safeLog(`[isUserAdmin] Check failed (user not in DB). Total time: ${Date.now() - startTime}ms`);
+      safeLog('[isUserAdmin] Check failed: User not found in DB or DB error occurred', { email: userEmail, dbError: dbError ? (dbError.message || String(dbError)) : null });
+      safeLog(`[isUserAdmin] Check failed (user not in DB or error). Total time: ${Date.now() - startTime}ms`);
       return false;
     }
     
     // Check if role is admin
-    const isAdmin = user.role === 'admin';
-    safeLog(`Admin check: User ${isAdmin ? 'is' : 'is not'} admin`, {
-      email: session.user.email,
+    const dbRole = user.role;
+    const isAdmin = dbRole === 'admin';
+    safeLog(`[isUserAdmin] Role check complete. DB Role: ${dbRole}, IsAdmin: ${isAdmin}`, {
+      email: userEmail,
       dbUserId: user._id.toString(),
-      dbRole: user.role,
-      sessionRole: session.user.role
+      sessionRole: session.user.role // Compare with session role
     });
     
     safeLog(`[isUserAdmin] Check ${isAdmin ? 'passed' : 'failed'}. Total time: ${Date.now() - startTime}ms`);
     return isAdmin;
   } catch (error) {
-    safeError('Error checking admin status', error);
-    safeLog(`[isUserAdmin] Check failed (error). Total time: ${Date.now() - startTime}ms`);
+    safeError('[isUserAdmin] Unexpected error during admin status check', error);
+    safeLog(`[isUserAdmin] Check failed (unexpected error). Total time: ${Date.now() - startTime}ms`);
     return false;
   }
 }

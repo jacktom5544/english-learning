@@ -15,7 +15,7 @@ export async function GET() {
         isAWS: !!process.env.AWS_REGION,
         aws: {
           region: process.env.AWS_REGION || 'not set',
-          amplify: !!process.env.AWS_AMPLIFY_APP_ID,
+          amplify: !!process.env.AMPLIFY_ENVIRONMENT || !!process.env.AWS_BRANCH,
         }
       }
     });

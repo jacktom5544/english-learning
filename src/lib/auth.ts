@@ -13,6 +13,8 @@ if (typeof window === 'undefined') {
   logEnvironmentStatus();
   const url = getNextAuthURL();
   safeLog('[auth.ts] Auth module loaded with NEXTAUTH_URL:', url);
+  // Explicitly log the secret status *before* using it
+  safeLog('[auth.ts] Checking NEXTAUTH_SECRET status:', process.env.NEXTAUTH_SECRET ? 'Defined' : '*** MISSING ***');
 }
 
 // Extend the built-in session types
@@ -53,57 +55,6 @@ declare module "next-auth/jwt" {
   }
 }
 
-// Get the NextAuth secret safely
-function getNextAuthSecret(): string {
-  // First try the hardcoded value for Amplify builds
-  const hardcodedSecret = 'WJP6m49zmV7Yo1ZNhQmSDctrZHC2WoayEFe9gGzcAAg=';
-  
-  // Then check for environment variable
-  const secret = process.env.NEXTAUTH_SECRET;
-  
-  if (!secret && process.env.NODE_ENV === 'production') {
-    safeError('[auth.ts] NEXTAUTH_SECRET is missing in environment, using hardcoded value');
-    return hardcodedSecret;
-  }
-  
-  return secret || hardcodedSecret;
-}
-
-// Get the domain for cookies
-function getCookieDomain(): string | undefined {
-  safeLog('[auth.ts] Determining cookie domain...');
-  
-  // In Amplify environment, use custom domain if available
-  if (isAmplifyEnvironment()) {
-    safeLog('[auth.ts] Amplify environment detected for cookie domain');
-    if (process.env.AMPLIFY_APP_DOMAIN) {
-      safeLog('[auth.ts] Amplify custom domain found:', process.env.AMPLIFY_APP_DOMAIN);
-      // Use root domain for cookies (strip subdomains)
-      const domainParts = process.env.AMPLIFY_APP_DOMAIN.split('.');
-      
-      // If there are at least 2 parts and not an IP address
-      if (domainParts.length >= 2 && isNaN(Number(domainParts[domainParts.length - 1]))) {
-        // Get the top two levels of the domain (e.g., example.com from www.example.com)
-        const rootDomain = domainParts.slice(-2).join('.');
-        safeLog('[auth.ts] Calculated root domain:', rootDomain);
-        return rootDomain;
-      }
-      
-      // Fallback to the whole domain
-      safeLog('[auth.ts] Falling back to full custom domain:', process.env.AMPLIFY_APP_DOMAIN);
-      return process.env.AMPLIFY_APP_DOMAIN;
-    }
-    
-    // Default Amplify domain (don't set domain)
-    safeLog('[auth.ts] No custom domain found, using default Amplify domain (undefined)');
-    return undefined;
-  }
-  
-  // For localhost, don't set a domain
-  safeLog('[auth.ts] Not in Amplify env, using localhost domain (undefined)');
-  return undefined;
-}
-
 // Define the shape of the User object
 interface UserData {
   id: string;
@@ -120,6 +71,14 @@ function ensureSubscriptionStatus(status: string | undefined): SubscriptionStatu
     return status;
   }
   return 'inactive'; // Default fallback
+}
+
+// Check NEXTAUTH_SECRET *before* defining authOptions
+const effectiveNextAuthSecret = process.env.NEXTAUTH_SECRET;
+if (!effectiveNextAuthSecret && process.env.NODE_ENV === 'production') {
+  safeError('[auth.ts] CRITICAL ERROR: NEXTAUTH_SECRET is missing in production environment! Authentication will likely fail.');
+  // Optionally throw an error during startup in production if secret is missing
+  // throw new Error('CRITICAL: NEXTAUTH_SECRET environment variable is not set.');
 }
 
 export const authOptions: NextAuthOptions = {
@@ -239,7 +198,9 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
   },
-  secret: process.env.NEXTAUTH_SECRET || 'WJP6m49zmV7Yo1ZNhQmSDctrZHC2WoayEFe9gGzcAAg=',
+  // Use the environment variable directly. NO FALLBACK.
+  // If it's missing in production, things should fail clearly.
+  secret: effectiveNextAuthSecret,
   debug: process.env.NODE_ENV !== 'production',
   logger: {
     error(code, metadata) {
