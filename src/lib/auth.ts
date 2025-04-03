@@ -212,7 +212,7 @@ export const authOptions: NextAuthOptions = {
 
   debug: process.env.NODE_ENV !== 'production',
 
-  // Restore recommended cookie settings
+  // Restore recommended cookie settings, try sameSite: 'none'
   cookies: {
     sessionToken: {
       name: process.env.NODE_ENV === 'production' 
@@ -220,9 +220,9 @@ export const authOptions: NextAuthOptions = {
         : 'next-auth.session-token',
       options: { 
         httpOnly: true,       
-        sameSite: 'lax',      
+        sameSite: 'none',
         path: '/',            
-        secure: process.env.NODE_ENV === 'production', 
+        secure: true,
         // domain: Optional
       }
     },
