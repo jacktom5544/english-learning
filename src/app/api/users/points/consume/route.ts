@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { connectToDatabase } from '@/lib/db';
-import User from '@/models/User';
+import { authOptions } from '@/lib/auth';
+import getClient from '@/lib/db';
+import { ObjectId } from 'mongodb';
 import { consumePoints } from '@/lib/serverUtils';
 import { PointSystem } from '@/lib/pointSystem';
 import { isProduction, isAWSAmplify } from '@/lib/env';
@@ -13,10 +14,16 @@ import { safeLog, safeError } from '@/lib/utils';
  */
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     
     if (!session || !session.user) {
+      console.error('POST /points/consume: Authentication required - No user ID');
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+    const userId = session.user.id;
+    if (!ObjectId.isValid(userId)) {
+        console.error(`POST /points/consume: Invalid user ID format: ${userId}`);
+        return NextResponse.json({ error: 'Invalid user ID format' }, { status: 400 });
     }
 
     // Parse request body
@@ -26,22 +33,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Valid points value required' }, { status: 400 });
     }
 
-    await connectToDatabase();
+    const { db } = await getClient();
 
-    // Find user by email
-    const userEmail = session.user.email as string;
-    const user = await User.findOne({ email: userEmail });
+    // Find user by ID using native driver
+    const usersCollection = db.collection('users');
+    const userDoc = await usersCollection.findOne({ _id: new ObjectId(userId) });
 
-    if (!user) {
-      safeError('User not found when consuming points', { email: userEmail });
+    if (!userDoc) {
+      safeError('User not found when consuming points', { userId: userId });
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
     // Log the attempt
     safeLog('Point consumption API call', {
-      userId: user._id.toString(),
+      userId: userId,
       pointsToConsume,
-      currentPoints: user.points,
+      currentPoints: userDoc.points,
       inProduction: isProduction(),
       inAmplify: isAWSAmplify()
     });
@@ -53,30 +60,30 @@ export async function POST(req: NextRequest) {
     if (!diagnosticPassed && !isProduction()) {
       safeLog('Point system diagnostic failed, but allowing action in development');
       return NextResponse.json({
-        points: user.points,
-        pointsUsedThisMonth: user.pointsUsedThisMonth,
-        pointsLastUpdated: user.pointsLastUpdated,
+        points: userDoc.points,
+        pointsUsedThisMonth: userDoc.pointsUsedThisMonth,
+        pointsLastUpdated: userDoc.pointsLastUpdated,
         debug_info: 'Development mode: proceeding despite diagnostic failure'
       });
     }
 
-    // Consume points
-    const updatedUser = await consumePoints(user._id, pointsToConsume);
+    // Consume points - Pass string ID
+    const updatedUserMongooseDoc = await consumePoints(userId, pointsToConsume);
     
-    if (!updatedUser) {
+    if (!updatedUserMongooseDoc) {
       return NextResponse.json({ 
         error: 'Not enough points', 
-        currentPoints: user.points || 0,
+        currentPoints: userDoc.points || 0,
         requiredPoints: pointsToConsume,
         diagnostic: isProduction() ? undefined : PointSystem.getDebugInfo()
       }, { status: 403 });
     }
 
-    // Return updated points info
+    // Return updated points info from the Mongoose doc returned by consumePoints
     return NextResponse.json({
-      points: updatedUser.points,
-      pointsUsedThisMonth: updatedUser.pointsUsedThisMonth,
-      pointsLastUpdated: updatedUser.pointsLastUpdated,
+      points: updatedUserMongooseDoc.points,
+      pointsUsedThisMonth: updatedUserMongooseDoc.pointsUsedThisMonth,
+      pointsLastUpdated: updatedUserMongooseDoc.pointsLastUpdated,
       diagnostic: isProduction() ? undefined : {
         system_ok: diagnosticPassed,
         ...PointSystem.getDebugInfo()
