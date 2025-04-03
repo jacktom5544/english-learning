@@ -187,13 +187,15 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Match all request paths except:
-     * 1. /_next/ (Next.js internals)
-     * 2. /static (static files)
-     * 3. /favicon.ico, /robots.txt (common static files)
-     * 4. /api/health (health check endpoint)
-     * 5. .*\..*$ (files with extensions, e.g. images)
+     * Match all request paths except for the ones starting with:
+     * - api (API routes)
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - robots.txt (robots file)
+     * - static (public static files)
+     * - files with extensions (e.g. .png)
      */
-    '/((?!_next|static|favicon.ico|robots.txt|api/health|.*\\..*$).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|robots.txt|static|.*\\..*$).*)',
   ],
 }; 
