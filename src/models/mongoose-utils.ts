@@ -8,19 +8,30 @@ import connectDB from '@/lib/db'; // Import the function that returns the native
  */
 
 /**
- * Safe wrapper for Model.find
+ * Safe wrapper for Model.find using NATIVE driver
  */
 export async function findDocuments<T>(
   model: Model<any>,
   filter: Record<string, any> = {}
 ): Promise<T[]> {
+  let db;
   try {
-    // Use any type to bypass TypeScript's strict checking
-    // and then cast to the appropriate type at the end
-    const query: any = model.find(filter);
-    return await query.exec() as T[];
+    const { db: nativeDb } = await connectDB();
+    db = nativeDb;
+    const collectionName = model.collection.name;
+    safeLog(`[native-utils] Executing native find on ${collectionName} with filter:`, filter);
+    const startTime = Date.now();
+    
+    const results = await db.collection(collectionName).find(filter).toArray();
+    
+    const duration = Date.now() - startTime;
+    safeLog(`[native-utils] native find on ${collectionName} completed in ${duration}ms. Found: ${results.length} documents.`);
+
+    // Cast result (potential type mismatch if Mongoose Documents are expected downstream)
+    return results as T[]; 
+
   } catch (error) {
-    safeError('Error in findDocuments:', error);
+    safeError(`[native-utils] Error executing native find on ${model.collection.name}:`, error);
     return [];
   }
 }
