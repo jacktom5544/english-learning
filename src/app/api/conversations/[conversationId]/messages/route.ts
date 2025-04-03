@@ -12,6 +12,7 @@ import { consumePoints } from '@/lib/serverUtils';
 import { POINT_CONSUMPTION } from '@/lib/pointSystem';
 import getClient from '@/lib/db'; // Use default export
 import { ObjectId } from 'mongodb'; // Import ObjectId
+import { authOptions } from '@/lib/auth'; // Import authOptions
 
 // Define interfaces for message structure (optional but good practice)
 interface Message {
@@ -28,7 +29,8 @@ export async function POST(
   { params }: { params: { conversationId: string } }
 ) {
   try {
-    const session = await getServerSession(); // Assuming default authOptions
+    // Explicitly pass authOptions
+    const session = await getServerSession(authOptions); 
 
     // 1. Auth and User ID Validation
     if (!session?.user?.id) {
