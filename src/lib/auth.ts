@@ -203,24 +203,23 @@ export const authOptions: NextAuthOptions = {
   secret: effectiveNextAuthSecret,
   debug: process.env.NODE_ENV !== 'production',
 
-  // Explicit Cookie Configuration for Production
+  // Explicit Cookie Configuration (Simplified for testing)
   cookies: {
     sessionToken: {
-      // Use __Secure- prefix in production for extra security (requires Secure attribute)
-      name: process.env.NODE_ENV === 'production' 
-        ? '__Secure-next-auth.session-token' 
-        : 'next-auth.session-token',
+      // REMOVED __Secure- prefix for testing
+      name: 'next-auth.session-token', 
       options: { 
-        httpOnly: true,       // Prevent client-side JS access
-        sameSite: 'lax',      // Good balance of security and usability
-        path: '/',            // Apply to whole site
-        secure: process.env.NODE_ENV === 'production', // MUST be true for HTTPS and __Secure- prefix
-        // domain: Optional: '.yourdomain.com' if using custom domain and subdomains
+        httpOnly: true,       
+        sameSite: 'lax',      
+        path: '/',            
+        // secure attribute is still conditional based on NODE_ENV
+        secure: process.env.NODE_ENV === 'production', 
+        // domain: Optional
       }
     },
     // You might need to configure other cookies if defaults cause issues, but start with sessionToken
-    // callbackUrl: { name: `__Host-next-auth.callback-url`, options: { sameSite: 'lax', path: '/', secure: true }},
-    // csrfToken: { name: `__Host-next-auth.csrf-token`, options: { httpOnly: true, sameSite: 'lax', path: '/', secure: true }},
+    // callbackUrl: { name: `next-auth.callback-url`, options: { sameSite: 'lax', path: '/', secure: process.env.NODE_ENV === 'production' }},
+    // csrfToken: { name: `next-auth.csrf-token`, options: { httpOnly: true, sameSite: 'lax', path: '/', secure: process.env.NODE_ENV === 'production' }},
   },
 
   logger: {
