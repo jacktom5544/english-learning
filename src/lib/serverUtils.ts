@@ -79,18 +79,23 @@ export async function consumePoints(userId: string, pointsToConsume: number): Pr
     const check = userPoints >= pointsToConsume;
     console.log(`[INFO] Checking hasEnoughPoints: userId=${userId}, userPointsValue=${userPoints}, userPointsType=${typeof userPoints}, actionCostValue=${pointsToConsume}, actionCostType=${typeof pointsToConsume}, isProduction=${isProd}, checkResult=${check}`);
 
-    // Use our enhanced PointSystem to check if user has enough points
-    // In production, require actual points. In development/test, allow usage even without enough points
-    if (!PointSystem.hasEnoughPoints(user.points, pointsToConsume)) {
+    // *** Replace the PointSystem.hasEnoughPoints check ***
+    let hasEnough = true; // Default to true (allows non-production use)
+    if (isProd) { // Only perform the check in production
+        hasEnough = (user.points >= pointsToConsume);
+    }
+
+    // Check the result
+    if (!hasEnough) { 
       safeLog('Not enough points for action', { 
         userId, 
         pointsToConsume, 
         currentPoints: user.points 
       });
-      return null;
+      return null; // Return null if not enough points (in production)
     }
     
-    // Update user points
+    // Update user points (only runs if hasEnough is true)
     user.points -= pointsToConsume;
     user.pointsUsedThisMonth += pointsToConsume;
     
@@ -204,4 +209,4 @@ export async function getCurrentUserWithPoints(): Promise<IUser | null> {
     safeLog(`[getCurrentUserWithPoints] Failed with error. Total time: ${Date.now() - startTime}ms`);
     return null;
   }
-} 
+}
