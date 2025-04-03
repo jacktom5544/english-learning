@@ -73,16 +73,11 @@ export async function consumePoints(userId: string, pointsToConsume: number): Pr
       return user;
     }
     
-    // *** ADD LOGGING HERE ***
-    safeLog('Checking hasEnoughPoints', { 
-        userId,
-        userPointsValue: user.points, 
-        userPointsType: typeof user.points,
-        actionCostValue: pointsToConsume,
-        actionCostType: typeof pointsToConsume,
-        isProduction: isProduction(),
-        checkResult: user.points >= pointsToConsume // Log the raw comparison for production
-    });
+    // *** REPLACE Existing safeLog for Checking hasEnoughPoints ***
+    const userPoints = user.points;
+    const isProd = isProduction();
+    const check = userPoints >= pointsToConsume;
+    console.log(`[INFO] Checking hasEnoughPoints: userId=${userId}, userPointsValue=${userPoints}, userPointsType=${typeof userPoints}, actionCostValue=${pointsToConsume}, actionCostType=${typeof pointsToConsume}, isProduction=${isProd}, checkResult=${check}`);
 
     // Use our enhanced PointSystem to check if user has enough points
     // In production, require actual points. In development/test, allow usage even without enough points
