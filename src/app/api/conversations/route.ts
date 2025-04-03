@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth'; // Import authOptions
 // import mongoose from 'mongoose'; // Keep if Conversation.create is used
 import Conversation from '@/models/Conversation'; // Keep for Conversation.create
 // import User from '@/models/User'; // Can likely remove/comment out
@@ -12,7 +13,8 @@ import { ObjectId } from 'mongodb'; // Import ObjectId
 // GET /api/conversations - Get all conversations for the current user
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession(); // Assuming using default authOptions implicitly
+    // Explicitly pass authOptions
+    const session = await getServerSession(authOptions); 
     
     // Check for user ID in session
     if (!session?.user?.id) { 
@@ -74,7 +76,8 @@ export async function GET(req: NextRequest) {
 // POST /api/conversations - Create a new conversation
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(); // Assuming using default authOptions implicitly
+    // Explicitly pass authOptions
+    const session = await getServerSession(authOptions); 
     
     // Check for user ID in session
     if (!session?.user?.id) { 
