@@ -76,29 +76,68 @@ export async function findOneDocument<T>(
 }
 
 /**
- * Safe wrapper for query chaining with select and sort
+ * Safe wrapper for find using NATIVE driver with select and sort options
  */
 export async function findDocumentsWithOptions<T>(
-  model: Model<any>,
+  model: Model<any>, // Keep model parameter for consistency
   filter: Record<string, any> = {},
   select: string | Record<string, any> | null = null,
   sort: Record<string, any> | null = null
 ): Promise<T[]> {
+  let db;
   try {
-    // Use any type to bypass TypeScript's strict checking
-    let query: any = model.find(filter);
-    
-    if (select) {
-      query = query.select(select);
+    const { db: nativeDb } = await connectDB();
+    db = nativeDb;
+    const collectionName = model.collection.name;
+    safeLog(`[native-utils] Executing native find on ${collectionName} with filter:`, filter);
+
+    // Build projection for select
+    let projection: Record<string, any> | undefined = undefined;
+    if (typeof select === 'string') {
+      projection = {};
+      // Simple parser: assumes space-separated fields, respects '-'
+      select.split(' ').forEach(field => {
+        if (field.startsWith('-')) {
+          projection[field.substring(1)] = 0; // Exclude field
+        } else if (field.length > 0) {
+          projection[field] = 1; // Include field
+        }
+      });
+    } else if (typeof select === 'object' && select !== null) {
+       // Allow passing a projection object directly
+       projection = select;
     }
-    
+    safeLog(`[native-utils] Using projection:`, projection);
+
+    // Build sort options
+    let sortOptions: Record<string, any> | undefined = undefined;
     if (sort) {
-      query = query.sort(sort);
+       sortOptions = sort;
+    }
+    safeLog(`[native-utils] Using sort:`, sortOptions);
+
+    const startTime = Date.now();
+    // Use native find with projection and sort
+    let cursor = db.collection(collectionName).find(filter);
+    if (projection) {
+      cursor = cursor.project(projection);
+    }
+    if (sortOptions) {
+      cursor = cursor.sort(sortOptions);
     }
     
-    return await query.exec() as T[];
+    // Execute the query by converting cursor to array
+    const results = await cursor.toArray(); 
+    const duration = Date.now() - startTime;
+    safeLog(`[native-utils] native find on ${collectionName} completed in ${duration}ms. Found: ${results.length} documents.`);
+    
+    // IMPORTANT: Mongoose often returns Documents, native driver returns plain objects.
+    // If downstream code expects Mongoose Documents (with methods like .save()), this could break.
+    // For simple data fetching/display, this cast is usually okay.
+    return results as T[]; // Cast result
+
   } catch (error) {
-    safeError('Error in findDocumentsWithOptions:', error);
-    return [];
+    safeError(`[native-utils] Error executing native find on ${model.collection.name}:`, error);
+    return []; // Return empty array on error
   }
 } 
