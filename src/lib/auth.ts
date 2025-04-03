@@ -2,7 +2,7 @@ import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { connectToDatabase } from '@/lib/db';
 import bcrypt from 'bcrypt';
-import { safeLog, safeError } from '@/lib/utils';
+import { safeLog, safeError, safeWarn } from '@/lib/utils';
 import { getNextAuthURL, logEnvironmentStatus, isAmplifyEnvironment } from './env';
 
 // Define subscription status type to match what's used in stripe.ts
@@ -71,14 +71,6 @@ function ensureSubscriptionStatus(status: string | undefined): SubscriptionStatu
     return status;
   }
   return 'inactive'; // Default fallback
-}
-
-// Check NEXTAUTH_SECRET *before* defining authOptions
-const effectiveNextAuthSecret = process.env.NEXTAUTH_SECRET;
-if (!effectiveNextAuthSecret && process.env.NODE_ENV === 'production') {
-  safeError('[auth.ts] CRITICAL ERROR: NEXTAUTH_SECRET is missing in production environment! Authentication will likely fail.');
-  // Optionally throw an error during startup in production if secret is missing
-  // throw new Error('CRITICAL: NEXTAUTH_SECRET environment variable is not set.');
 }
 
 export const authOptions: NextAuthOptions = {
@@ -198,21 +190,38 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
   },
-  // Use the environment variable directly. NO FALLBACK.
-  // If it's missing in production, things should fail clearly.
-  secret: effectiveNextAuthSecret,
+  // Read the secret DIRECTLY here and perform check
+  secret: (() => {
+    const secret = process.env.NEXTAUTH_SECRET;
+    if (!secret) {
+      // Log error specifically when the option is being constructed
+      safeError('[authOptions] CRITICAL ERROR: process.env.NEXTAUTH_SECRET is missing when authOptions is constructed!');
+      if (process.env.NODE_ENV === 'production') {
+        // Return empty string to let NextAuth handle the error
+        return ''; 
+      } else {
+        // Fallback for non-production (should ideally still be set via .env)
+        safeWarn('[authOptions] NEXTAUTH_SECRET missing in non-production, using default.');
+        return 'development-secret'; // Provide a default for local dev if needed
+      }
+    }
+    // Log success if secret is found here (optional)
+    // safeLog('[authOptions] NEXTAUTH_SECRET found and used.');
+    return secret;
+  })(), // Immediately invoke the function to get the secret
+
   debug: process.env.NODE_ENV !== 'production',
 
-  // Explicit Cookie Configuration (Simplified for testing)
+  // Restore recommended cookie settings
   cookies: {
     sessionToken: {
-      // REMOVED __Secure- prefix for testing
-      name: 'next-auth.session-token', 
+      name: process.env.NODE_ENV === 'production' 
+        ? '__Secure-next-auth.session-token' 
+        : 'next-auth.session-token',
       options: { 
         httpOnly: true,       
         sameSite: 'lax',      
         path: '/',            
-        // secure attribute is still conditional based on NODE_ENV
         secure: process.env.NODE_ENV === 'production', 
         // domain: Optional
       }
