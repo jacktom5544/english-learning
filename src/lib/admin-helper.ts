@@ -77,26 +77,40 @@ export async function adminRequired(req: NextRequest, handler: Function) {
     const isAdmin = await isUserAdmin(req);
     
     if (!isAdmin) {
+      // Add CORS headers for the 403 response
+      const headers = new Headers();
+      headers.set('Access-Control-Allow-Origin', '*');
+      headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE, PATCH');
+      headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      headers.set('Access-Control-Allow-Credentials', 'true');
+
       return NextResponse.json(
         { 
           error: '管理者権限がありません',
           message: 'Admin access required for this endpoint'
         },
-        { status: 403 }
+        { status: 403, headers } // Pass headers here
       );
     }
     
-    // User is admin, proceed to handler
+    // User is admin, proceed to handler (handler will set its own headers)
     return handler();
   } catch (error) {
     safeError('Error in admin authorization', error);
     
+    // Add CORS headers for the 500 response
+    const headers = new Headers();
+    headers.set('Access-Control-Allow-Origin', '*');
+    headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE, PATCH');
+    headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    headers.set('Access-Control-Allow-Credentials', 'true');
+
     return NextResponse.json(
       { 
         error: '認証中にエラーが発生しました',
         message: 'Error checking admin authorization'
       },
-      { status: 500 }
+      { status: 500, headers } // Pass headers here
     );
   }
 } 
