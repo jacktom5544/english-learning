@@ -73,6 +73,17 @@ export async function consumePoints(userId: string, pointsToConsume: number): Pr
       return user;
     }
     
+    // *** ADD LOGGING HERE ***
+    safeLog('Checking hasEnoughPoints', { 
+        userId,
+        userPointsValue: user.points, 
+        userPointsType: typeof user.points,
+        actionCostValue: pointsToConsume,
+        actionCostType: typeof pointsToConsume,
+        isProduction: isProduction(),
+        checkResult: user.points >= pointsToConsume // Log the raw comparison for production
+    });
+
     // Use our enhanced PointSystem to check if user has enough points
     // In production, require actual points. In development/test, allow usage even without enough points
     if (!PointSystem.hasEnoughPoints(user.points, pointsToConsume)) {
