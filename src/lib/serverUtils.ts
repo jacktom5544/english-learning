@@ -186,10 +186,10 @@ export async function getCurrentUserWithPoints(): Promise<IUser | null> {
       role: user.role
     });
     
-    // Check if points need to be updated
-    safeLog(`[getCurrentUserWithPoints] Checking monthly points update for user ${user._id}...`);
-    await updateMonthlyPoints(user);
-    safeLog(`[getCurrentUserWithPoints] Monthly points check done. Elapsed: ${Date.now() - startTime}ms`);
+    // Check if points need to be updated - REMOVED for performance
+    // safeLog(`[getCurrentUserWithPoints] Checking monthly points update for user ${user._id}...`);
+    // await updateMonthlyPoints(user);
+    // safeLog(`[getCurrentUserWithPoints] Monthly points check done. Elapsed: ${Date.now() - startTime}ms`);
     
     safeLog(`[getCurrentUserWithPoints] Completed successfully. Total time: ${Date.now() - startTime}ms`);
     return user;

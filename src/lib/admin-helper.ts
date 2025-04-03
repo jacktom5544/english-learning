@@ -73,12 +73,6 @@ export async function isUserAdmin(req?: NextRequest): Promise<boolean> {
  * Middleware function to enforce admin access to API endpoints
  */
 export async function adminRequired(req: NextRequest, handler: Function) {
-  const headers = new Headers();
-  headers.set('Access-Control-Allow-Origin', '*');
-  headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE, PATCH');
-  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  headers.set('Access-Control-Allow-Credentials', 'true');
-  
   try {
     const isAdmin = await isUserAdmin(req);
     
@@ -88,7 +82,7 @@ export async function adminRequired(req: NextRequest, handler: Function) {
           error: '管理者権限がありません',
           message: 'Admin access required for this endpoint'
         },
-        { status: 403, headers }
+        { status: 403 }
       );
     }
     
@@ -102,7 +96,7 @@ export async function adminRequired(req: NextRequest, handler: Function) {
         error: '認証中にエラーが発生しました',
         message: 'Error checking admin authorization'
       },
-      { status: 500, headers }
+      { status: 500 }
     );
   }
 } 
