@@ -1,5 +1,5 @@
 import mongoose, { Model, Document } from 'mongoose';
-import { safeError } from '@/lib/utils';
+import { safeError, safeLog } from '@/lib/utils';
 
 /**
  * Type-safe wrapper functions for Mongoose operations
@@ -48,10 +48,17 @@ export async function findOneDocument<T>(
   filter: Record<string, any>
 ): Promise<T | null> {
   try {
+    const modelName = model.modelName;
+    safeLog(`[mongoose-utils] Executing findOne on ${modelName} with filter:`, filter);
     const query: any = model.findOne(filter);
-    return await query.exec() as T | null;
+    const startTime = Date.now();
+    const result = await query.exec() as T | null;
+    const duration = Date.now() - startTime;
+    safeLog(`[mongoose-utils] findOne on ${modelName} completed in ${duration}ms. Found: ${!!result}`);
+    return result;
   } catch (error) {
-    safeError('Error in findOneDocument:', error);
+    // Log the specific error from findOne execution
+    safeError(`[mongoose-utils] Error executing findOne on ${model.modelName}:`, error);
     return null;
   }
 }
