@@ -121,7 +121,6 @@ export async function middleware(request: NextRequest) {
 
     // Use consistent values for authentication
     const nextAuthURL = getNextAuthURL();
-    // Use process.env directly and check existence
     const secret = process.env.NEXTAUTH_SECRET; 
     
     // Enhanced logging for debugging
@@ -143,40 +142,30 @@ export async function middleware(request: NextRequest) {
        return NextResponse.redirect(loginUrl);
     }
 
-    // Get the RAW authentication token string
-    const rawToken = await getToken({ 
+    // Get the DECODED token object (default behavior)
+    const token = await getToken({ 
       req: request,
       secret: secret, // Use the validated secret
       secureCookie: process.env.NODE_ENV === 'production',
-      raw: true // <--- GET RAW TOKEN
     });
 
-    // If no token string found, redirect to login
-    if (!rawToken) {
-      safeLog('Middleware: No raw token found, redirecting to login.');
+    // If no decoded token is returned (meaning cookie was invalid, expired, or missing), redirect to login
+    if (!token) {
+      safeLog('Middleware: No valid token found after getToken, redirecting to login.');
       const loginUrl = new URL('/login', nextAuthURL);
       loginUrl.searchParams.set('callbackUrl', encodeURI(correctedUrl));
+      // Redirect with SessionInvalid error if attempting protected route without valid session
+      loginUrl.searchParams.set('error', 'SessionInvalid'); 
       return NextResponse.redirect(loginUrl);
     }
 
-    // Validate the JWT token STRING here using the secret
-    try {
-      // Pass the rawToken string
-      await jwtVerify(rawToken, new TextEncoder().encode(secret)); 
-      // User is authenticated, allow access
-      safeLog('Middleware: Token verified successfully.');
-      return response;
-    } catch (error) {
-      safeError('Middleware JWT verification error:', error);
-      // On verification error, redirect to login
-      const loginUrl = new URL('/login', nextAuthURL);
-      loginUrl.searchParams.set('error', 'SessionInvalid'); // More specific error
-      return NextResponse.redirect(loginUrl);
-    }
-  } catch (error) { // Outer catch block
+    // If we get here, getToken successfully decrypted the token using the secret,
+    // implying the session is valid. Allow the request.
+    safeLog('Middleware: Token decoded successfully, allowing request.');
+    return response;
+
+  } catch (error) { // Outer catch block handles errors during getToken etc.
     safeError('Middleware error (outer catch):', error);
-    
-    // On unexpected error, redirect to login
     const loginUrl = new URL('/login', getNextAuthURL()); // Use getter function here
     loginUrl.searchParams.set('error', 'MiddlewareError');
     return NextResponse.redirect(loginUrl);
