@@ -202,6 +202,27 @@ export const authOptions: NextAuthOptions = {
   // If it's missing in production, things should fail clearly.
   secret: effectiveNextAuthSecret,
   debug: process.env.NODE_ENV !== 'production',
+
+  // Explicit Cookie Configuration for Production
+  cookies: {
+    sessionToken: {
+      // Use __Secure- prefix in production for extra security (requires Secure attribute)
+      name: process.env.NODE_ENV === 'production' 
+        ? '__Secure-next-auth.session-token' 
+        : 'next-auth.session-token',
+      options: { 
+        httpOnly: true,       // Prevent client-side JS access
+        sameSite: 'lax',      // Good balance of security and usability
+        path: '/',            // Apply to whole site
+        secure: process.env.NODE_ENV === 'production', // MUST be true for HTTPS and __Secure- prefix
+        // domain: Optional: '.yourdomain.com' if using custom domain and subdomains
+      }
+    },
+    // You might need to configure other cookies if defaults cause issues, but start with sessionToken
+    // callbackUrl: { name: `__Host-next-auth.callback-url`, options: { sameSite: 'lax', path: '/', secure: true }},
+    // csrfToken: { name: `__Host-next-auth.csrf-token`, options: { httpOnly: true, sameSite: 'lax', path: '/', secure: true }},
+  },
+
   logger: {
     error(code, metadata) {
       safeError(`[NextAuth] Error: ${code}`, metadata);
