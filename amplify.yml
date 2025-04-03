@@ -16,23 +16,25 @@ frontend:
         # Ensure clean state and all dependencies (including dev) are installed right before build
         - rm -rf node_modules 
         - npm install --include=dev
-        # Write environment variables explicitly to .env.local
-        - echo "MONGODB_URI=mongodb+srv://blogAdmin:BzvJciCcQ8A4i1DM@cluster0.zp8ls.mongodb.net/english-learning?retryWrites=true&w=majority&appName=Cluster0" >> .env.local
-        # - echo "NEXTAUTH_SECRET=+P4Cht0L+1wPlEs0Vnf531uOKMmqVkiiZJUBiOIyXws=" >> .env.local
-        - echo "NEXTAUTH_URL=https://main.d2gwwh0jouqtnx.amplifyapp.com" >> .env.local
-        - echo "AMPLIFY_ENVIRONMENT=true" >> .env.local
-        - echo "STRIPE_SECRET_KEY=$STRIPE_SECRET_KEY" >> .env.local
-        - echo "STRIPE_PUBLISHABLE_KEY=$STRIPE_PUBLISHABLE_KEY" >> .env.local
-        - echo "STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SECRET" >> .env.local
-        - echo "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY" >> .env.local
-        - echo "DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY" >> .env.local
-        - echo "DEEPSEEK_BASE_URL=$DEEPSEEK_BASE_URL" >> .env.local
-        - echo "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=$NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME" >> .env.local
-        - echo "NEXT_PUBLIC_CLOUDINARY_API_KEY=$NEXT_PUBLIC_CLOUDINARY_API_KEY" >> .env.local
-        - echo "CLOUDINARY_API_SECRET=$CLOUDINARY_API_SECRET" >> .env.local
-        - echo "NODE_ENV=$NODE_ENV" >> .env.local
-        # Also write the vars to .env, which might be read in some environments
-        - cp .env.local .env 
+        # --- START: Write environment variables to .env.production ---
+        # Use environment variables provided by Amplify build environment ($VAR_NAME)
+        - echo "MONGODB_URI=$MONGODB_URI" >> .env.production
+        - echo "NEXTAUTH_SECRET=$NEXTAUTH_SECRET" >> .env.production 
+        - echo "NEXTAUTH_URL=https://main.d2gwwh0jouqtnx.amplifyapp.com" >> .env.production
+        - echo "STRIPE_SECRET_KEY=$STRIPE_SECRET_KEY" >> .env.production
+        - echo "STRIPE_PUBLISHABLE_KEY=$STRIPE_PUBLISHABLE_KEY" >> .env.production
+        - echo "STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SECRET" >> .env.production
+        - echo "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY" >> .env.production
+        - echo "DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY" >> .env.production
+        - echo "DEEPSEEK_BASE_URL=$DEEPSEEK_BASE_URL" >> .env.production
+        - echo "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=$NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME" >> .env.production
+        - echo "NEXT_PUBLIC_CLOUDINARY_API_KEY=$NEXT_PUBLIC_CLOUDINARY_API_KEY" >> .env.production
+        - echo "CLOUDINARY_API_SECRET=$CLOUDINARY_API_SECRET" >> .env.production
+        - echo "NODE_ENV=production" >> .env.production # Explicitly set NODE_ENV
+        - echo "AMPLIFY_ENVIRONMENT=true" >> .env.production # Set Amplify flag if needed
+        # --- END: Write environment variables ---
+        # Ensure old copy command is removed or commented out
+        # - cp .env.local .env 
         # Use the build:amplify script
         - npm run build:amplify
   artifacts:
@@ -55,7 +57,7 @@ nextjsSSR:
     - name: MONGODB_URI
       value: mongodb+srv://blogAdmin:BzvJciCcQ8A4i1DM@cluster0.zp8ls.mongodb.net/english-learning?retryWrites=true&w=majority&appName=Cluster0
     - name: NEXTAUTH_SECRET
-    #  value: +P4Cht0L+1wPlEs0Vnf531uOKMmqVkiiZJUBiOIyXws=
+    #  value: +P4Cht0L+1wPlEs0Vnf531uOKMmqVkiiZJUBiOIyXws= # Ensure value is commented/removed here too
     - name: NEXTAUTH_URL
       value: https://main.d2gwwh0jouqtnx.amplifyapp.com
     - name: NODE_ENV
