@@ -41,7 +41,11 @@ export async function GET(
       );
     }
     
-    return NextResponse.json(user);
+    // Ensure _id is serialized as a string
+    user._id = user._id.toString();
+
+    // Return user data nested under 'user' key for consistency
+    return NextResponse.json({ user: user });
   } catch (error) {
     console.error('Error fetching user:', error);
     return NextResponse.json(
@@ -128,6 +132,9 @@ export async function PUT(
 
     const message = result.modifiedCount > 0 ? 'プロフィールが更新されました' : 'プロフィールは既に最新です';
     
+    // Ensure _id is serialized as a string
+    updatedUser._id = updatedUser._id.toString();
+
     return NextResponse.json({
       message: message,
       user: updatedUser
