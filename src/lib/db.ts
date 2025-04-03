@@ -1,38 +1,17 @@
 import mongoose from 'mongoose';
 import { safeLog, safeError } from './utils';
-import { ENV } from './env';
 import { MongoClient, MongoClientOptions } from 'mongodb';
 
-// Define a hardcoded MongoDB URI as fallback for AWS Amplify
-const FALLBACK_MONGODB_URI = 'mongodb+srv://blogAdmin:BzvJciCcQ8A4i1DM@cluster0.zp8ls.mongodb.net/english-learning?retryWrites=true&w=majority&appName=Cluster0';
+// Remove fallback and complex URI logic
+const MONGODB_URI = process.env.MONGODB_URI;
 
-// Get MongoDB URI from environment or use fallback
-function getMongoDBURI() {
-  // First check if it's available from ENV
-  const envURI = ENV.MONGODB_URI;
-  if (envURI && envURI.length > 20) {
-    safeLog('[db.ts] Using MongoDB URI from environment variables');
-    return envURI;
-  }
-  
-  // Then check direct process.env
-  if (process.env.MONGODB_URI && process.env.MONGODB_URI.length > 20) {
-    safeLog('[db.ts] Using MongoDB URI from process.env');
-    return process.env.MONGODB_URI;
-  }
-  
-  // Use hardcoded value in .env.local file
-  const envLocal = 'mongodb+srv://blogAdmin:BzvJciCcQ8A4i1DM@cluster0.zp8ls.mongodb.net/english-learning?retryWrites=true&w=majority&appName=Cluster0';
-  safeLog('[db.ts] Using hardcoded MongoDB URI from .env.local');
-  return envLocal;
-}
-
-// Get the MongoDB connection string
-const MONGODB_URI = getMongoDBURI();
+safeLog(`[db.ts] Retrieved MONGODB_URI: ${MONGODB_URI ? 'found' : 'NOT FOUND'}`);
 
 if (!MONGODB_URI) {
-  safeError('[db.ts] MONGODB_URI is not defined - check your environment variables');
-  throw new Error('Please define the MONGODB_URI environment variable');
+  safeError('[db.ts] MONGODB_URI environment variable is not defined or empty!');
+  // Log available env vars for debugging (be careful with sensitive data in real logs)
+  // safeLog('Available process.env keys:', Object.keys(process.env)); 
+  throw new Error('Please define the MONGODB_URI environment variable properly.');
 }
 
 /**
@@ -75,8 +54,8 @@ export async function connectToDatabase() {
 
   const opts: MongoClientOptions = {
     connectTimeoutMS: 15000, // 15-second connection timeout
-    socketTimeoutMS: 45000,  // 45-second socket timeout
-    serverSelectionTimeoutMS: 20000, // 20-second server selection timeout
+    socketTimeoutMS: 60000,  // Increased to 60-second socket timeout
+    serverSelectionTimeoutMS: 30000, // Increased to 30-second server selection timeout
     maxPoolSize: 10,         // Limit maximum connections
     minPoolSize: 1,          // Keep at least one connection open
   };
