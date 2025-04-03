@@ -128,13 +128,16 @@ export async function POST(
     // 8. Generate Teacher Response (passing plain objects)
     let aiResponse: string;
      try {
+         console.time('generateTeacherResponse'); // Start timer
          aiResponse = await generateTeacherResponse(
            conversationDoc.teacher,
            content, // User's new message content
            userObjectForAI, // Plain user object
            conversationDoc.messages // Existing message history
          );
+         console.timeEnd('generateTeacherResponse'); // End timer and log duration
      } catch (aiError) {
+         console.timeEnd('generateTeacherResponse'); // Ensure timer ends even on error
          console.error("AI teacher response generation failed:", aiError);
          aiResponse = "Sorry, I encountered an error trying to respond. Could you try rephrasing?"; // Fallback response
      }
