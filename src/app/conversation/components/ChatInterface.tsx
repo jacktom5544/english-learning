@@ -154,18 +154,30 @@ export default function ChatInterface({ conversation, onConversationUpdate }: Ch
         const data = await response.json();
         // Hide typing indicator before showing the response
         setIsTeacherTyping(false);
-        
-        // Slight delay before showing teacher's response for more natural flow
-        setTimeout(() => {
-          // Update local messages state instead of refreshing the entire conversation
-          setMessages(data.messages);
-          
-          // Update the parent component silently in the background
-          // This ensures the conversation list is up-to-date but doesn't refresh the interface
+
+        // Check if we received the teacher message structure
+        if (data && data.teacherMessage) {
+          // Slight delay before showing teacher's response for more natural flow
           setTimeout(() => {
-            onUpdateRef.current();
-          }, 1000);
-        }, 300);
+            // Append the new teacher message to the existing messages
+            setMessages((prevMessages) => [...prevMessages, data.teacherMessage]);
+
+            // Update the parent component silently in the background
+            // This ensures the conversation list is up-to-date but doesn't refresh the interface
+            setTimeout(() => {
+              onUpdateRef.current();
+            }, 1000);
+          }, 300);
+        } else {
+          // Handle cases where the expected data structure isn't returned
+          console.error('Received unexpected success response format:', data);
+          const systemErrorMessage = {
+            sender: 'teacher' as const,
+            content: "Received an unexpected response from the server. Please try again.",
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, systemErrorMessage]);
+        }
       } else {
         // Handle different error responses
         setIsTeacherTyping(false);
