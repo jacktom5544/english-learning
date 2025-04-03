@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
-import { connectToDatabase } from '@/lib/db';
-import User from '@/models/User';
+import getClient, { connectToDatabase } from '@/lib/db';
+import { ObjectId } from 'mongodb';
 
 export async function GET(
   request: NextRequest,
@@ -11,7 +11,11 @@ export async function GET(
     const params = await context.params;
     const id = params.id;
     
-    // Verify the request contains a valid token
+    // Validate ObjectId
+    if (!ObjectId.isValid(id)) {
+      return NextResponse.json({ error: 'Invalid user ID format' }, { status: 400 });
+    }
+    
     const token = await getToken({ req: request });
     
     if (!token || token.id !== id) {
@@ -21,9 +25,14 @@ export async function GET(
       );
     }
 
-    await connectToDatabase();
+    const client = await getClient();
+    const db = client.db();
+    const usersCollection = db.collection('users');
     
-    const user = await User.findById(id).select('-password');
+    const user = await usersCollection.findOne(
+      { _id: new ObjectId(id) },
+      { projection: { password: 0 } }
+    );
     
     if (!user) {
       return NextResponse.json(
@@ -50,7 +59,11 @@ export async function PUT(
     const params = await context.params;
     const id = params.id;
     
-    // Verify the request contains a valid token
+    // Validate ObjectId
+    if (!ObjectId.isValid(id)) {
+      return NextResponse.json({ error: 'Invalid user ID format' }, { status: 400 });
+    }
+    
     const token = await getToken({ req: request });
     
     if (!token || token.id !== id) {
@@ -63,7 +76,6 @@ export async function PUT(
     const requestBody = await request.json();
     const { name, englishLevel, job, goal, preferredTeacher, image, startReason, struggles } = requestBody;
 
-    // Validate inputs
     if (!name) {
       return NextResponse.json(
         { error: 'ニックネームは必須です' },
@@ -71,49 +83,61 @@ export async function PUT(
       );
     }
 
-    await connectToDatabase();
+    const client = await getClient();
+    const db = client.db();
+    const usersCollection = db.collection('users');
     
-    const user = await User.findById(id);
-    
-    if (!user) {
+    const updateData: { $set: Record<string, any> } = { $set: {} };
+    if (name !== undefined) updateData.$set.name = name;
+    if (englishLevel !== undefined) updateData.$set.englishLevel = englishLevel;
+    if (job !== undefined) updateData.$set.job = job;
+    if (goal !== undefined) updateData.$set.goal = goal;
+    if (preferredTeacher !== undefined) updateData.$set.preferredTeacher = preferredTeacher;
+    if (image !== undefined) updateData.$set.image = image;
+    if (startReason !== undefined) updateData.$set.startReason = startReason;
+    if (struggles !== undefined) updateData.$set.struggles = struggles;
+
+    if (Object.keys(updateData.$set).length === 0) {
+        return NextResponse.json(
+            { error: 'No update fields provided beyond the required name' },
+            { status: 400 }
+        );
+    }
+
+    const result = await usersCollection.updateOne(
+      { _id: new ObjectId(id) },
+      updateData
+    );
+
+    if (result.matchedCount === 0) {
       return NextResponse.json(
         { error: 'ユーザーが見つかりません' },
         { status: 404 }
       );
     }
-    
-    // Update user fields
-    user.name = name;
-    if (englishLevel) user.englishLevel = englishLevel;
-    if (job !== undefined) user.job = job;
-    if (goal !== undefined) user.goal = goal;
-    if (preferredTeacher !== undefined) user.preferredTeacher = preferredTeacher;
-    if (image !== undefined) user.image = image;
-    if (startReason !== undefined) user.startReason = startReason;
-    if (struggles !== undefined) user.struggles = struggles;
-    
-    await user.save();
+
+    const updatedUser = await usersCollection.findOne(
+        { _id: new ObjectId(id) },
+        { projection: { password: 0 } }
+    );
+
+    if (!updatedUser) { 
+        console.error(`Failed to fetch user ${id} after update, despite matchedCount=1.`);
+        return NextResponse.json({ error: '更新後のユーザーデータの取得に失敗しました' }, { status: 500 });
+    }
+
+    const message = result.modifiedCount > 0 ? 'プロフィールが更新されました' : 'プロフィールは既に最新です';
     
     return NextResponse.json({
-      message: 'プロフィールが更新されました',
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        englishLevel: user.englishLevel,
-        job: user.job,
-        goal: user.goal,
-        preferredTeacher: user.preferredTeacher,
-        image: user.image ? 'present' : null,
-        startReason: user.startReason,
-        struggles: user.struggles,
-        points: user.points,
-        pointsUsedThisMonth: user.pointsUsedThisMonth,
-        pointsLastUpdated: user.pointsLastUpdated
-      }
+      message: message,
+      user: updatedUser
     });
   } catch (error) {
     console.error('Error updating user:', error);
+    if (error instanceof Error && error.name === 'MongoServerError') {
+         console.error('MongoDB Server Error during user update:', error);
+         return NextResponse.json({ error: 'データベースの更新中にエラーが発生しました' }, { status: 500 });
+    }
     return NextResponse.json(
       { error: 'サーバーエラーが発生しました' },
       { status: 500 }
