@@ -25,8 +25,7 @@ export async function GET(
       );
     }
 
-    const client = await getClient();
-    const db = client.db();
+    const { client, db } = await getClient();
     const usersCollection = db.collection('users');
     
     const user = await usersCollection.findOne(
@@ -87,8 +86,7 @@ export async function PUT(
       );
     }
 
-    const client = await getClient();
-    const db = client.db();
+    const { client, db } = await getClient();
     const usersCollection = db.collection('users');
     
     const updateData: { $set: Record<string, any> } = { $set: {} };
