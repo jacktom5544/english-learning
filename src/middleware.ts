@@ -3,18 +3,13 @@ import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import { safeLog, safeError } from '@/lib/utils';
 import { isAmplifyEnvironment } from '@/lib/env';
+import { jwtVerify } from 'jose';
 
 // Function to determine if a request is going to a static asset
 function isStaticAsset(pathname: string): boolean {
   return /\.(.*)$/.test(pathname) || // Files with extensions
     pathname.startsWith('/_next/') || // Next.js resources
     pathname.startsWith('/api/health'); // Health check endpoint
-}
-
-// Function to safely get NextAuth secret - this should match auth.ts
-function getNextAuthSecret(): string {
-  // Use hardcoded secret for reliability
-  return process.env.NEXTAUTH_SECRET || 'WJP6m49zmV7Yo1ZNhQmSDctrZHC2WoayEFe9gGzcAAg=';
 }
 
 // Get the correct NextAuth URL based on environment
@@ -126,41 +121,65 @@ export async function middleware(request: NextRequest) {
 
     // Use consistent values for authentication
     const nextAuthURL = getNextAuthURL();
-    const nextAuthSecret = getNextAuthSecret();
+    // Use process.env directly and check existence
+    const secret = process.env.NEXTAUTH_SECRET; 
     
     // Enhanced logging for debugging
     safeLog('Auth middleware check:', { 
       path: pathname, 
       nextAuthURL,
-      hasSecret: !!nextAuthSecret,
+      hasSecret: !!secret, // Check the actual secret being used
       cookieHeader: request.headers.get('cookie') || 'no cookies',
       originalUrl: request.url,
       correctedUrl
     });
 
-    // Get authentication token
-    const token = await getToken({ 
-      req: request,
-      secret: nextAuthSecret,
-      secureCookie: process.env.NODE_ENV === 'production'
-    });
-
-    // If no token found, redirect to login
-    if (!token) {
-      const url = new URL('/login', nextAuthURL);
-      url.searchParams.set('callbackUrl', encodeURI(correctedUrl));
-      return NextResponse.redirect(url);
+    if (!secret) {
+       console.error('Middleware: NEXTAUTH_SECRET not found!');
+       // Redirect to login if secret is missing during auth check
+       // Use nextAuthURL for constructing the redirect URL
+       const loginUrl = new URL('/login', nextAuthURL);
+       loginUrl.searchParams.set('error', 'ConfigurationError');
+       return NextResponse.redirect(loginUrl);
     }
 
-    // User is authenticated, allow access
-    return response;
-  } catch (error) {
-    safeError('Middleware error:', error);
+    // Get the RAW authentication token string
+    const rawToken = await getToken({ 
+      req: request,
+      secret: secret, // Use the validated secret
+      secureCookie: process.env.NODE_ENV === 'production',
+      raw: true // <--- GET RAW TOKEN
+    });
+
+    // If no token string found, redirect to login
+    if (!rawToken) {
+      safeLog('Middleware: No raw token found, redirecting to login.');
+      const loginUrl = new URL('/login', nextAuthURL);
+      loginUrl.searchParams.set('callbackUrl', encodeURI(correctedUrl));
+      return NextResponse.redirect(loginUrl);
+    }
+
+    // Validate the JWT token STRING here using the secret
+    try {
+      // Pass the rawToken string
+      await jwtVerify(rawToken, new TextEncoder().encode(secret)); 
+      // User is authenticated, allow access
+      safeLog('Middleware: Token verified successfully.');
+      return response;
+    } catch (error) {
+      safeError('Middleware JWT verification error:', error);
+      // On verification error, redirect to login
+      const loginUrl = new URL('/login', nextAuthURL);
+      loginUrl.searchParams.set('error', 'SessionInvalid'); // More specific error
+      return NextResponse.redirect(loginUrl);
+    }
+  } catch (error) { // Outer catch block
+    safeError('Middleware error (outer catch):', error);
     
-    // On error, redirect to login with error parameter
-    const url = new URL('/login', getNextAuthURL());
-    url.searchParams.set('error', 'AuthenticationError');
-    return NextResponse.redirect(url);
+    // On unexpected error, redirect to login
+    const loginUrl = new URL('/login', getNextAuthURL()); // Use getter function here
+    loginUrl.searchParams.set('error', 'MiddlewareError');
+    return NextResponse.redirect(loginUrl);
   }
 }
 

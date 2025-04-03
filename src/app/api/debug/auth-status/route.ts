@@ -5,6 +5,7 @@ import { safeLog, safeError } from '@/lib/utils';
 import { getNextAuthURL, isProduction, isAWSAmplify } from '@/lib/env';
 import { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
+import { jwtVerify } from 'jose';
 
 /**
  * API route to check authentication status
@@ -40,6 +41,22 @@ export async function GET(req: NextRequest) {
       tokenError = err instanceof Error ? err.message : String(err);
     }
     
+    let decodedToken = null;
+    if (token) {
+      try {
+        // Use ONLY the environment variable secret
+        const secret = process.env.NEXTAUTH_SECRET;
+        if (!secret) {
+          throw new Error('NEXTAUTH_SECRET not set for token decoding');
+        }
+        // Assuming the token is a JWT string - adjust if it's an object
+        decodedToken = await jwtVerify(token, new TextEncoder().encode(secret));
+      } catch (error) {
+        safeError('Failed to decode token', error);
+        decodedToken = { error: 'Failed to decode', details: error instanceof Error ? error.message : String(error) };
+      }
+    }
+    
     // Get cookies for debugging
     const cookieHeader = req.headers.get('cookie') || '';
     const cookies = cookieHeader.split(';').map(c => c.trim());
@@ -69,6 +86,7 @@ export async function GET(req: NextRequest) {
         points: token.points || null,
         subscriptionStatus: token.subscriptionStatus || null
       } : null,
+      decodedToken: decodedToken,
       cookies: {
         count: cookies.length,
         names: cookies.map(c => c.split('=')[0]),

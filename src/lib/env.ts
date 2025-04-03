@@ -10,7 +10,7 @@ import { safeLog } from './utils';
 // Hardcoded values for critical auth environment variables
 const HARDCODED_VALUES = {
   NEXTAUTH_URL: 'https://main.d2gwwh0jouqtnx.amplifyapp.com',
-  NEXTAUTH_SECRET: '+P4Cht0L+1wPlEs0Vnf531uOKMmqVkiiZJUBiOIyXws='
+  // NEXTAUTH_SECRET: '+P4Cht0L+1wPlEs0Vnf531uOKMmqVkiiZJUBiOIyXws=' // Removed unused constant
 };
 
 // Helper function to log environment variable status (without exposing values)
@@ -126,17 +126,18 @@ export const ENV = {
   
   // NextAuth Secret - NO DEFAULT PROVIDED in production
   get NEXTAUTH_SECRET(): string {
-    // First check for environment variable
     const secret = process.env.NEXTAUTH_SECRET;
     
-    // If not found in production, use hardcoded value
+    // REMOVED hardcoded fallback logic
     if (!secret && isProduction()) {
-      console.error('NEXTAUTH_SECRET not found in environment, using hardcoded value');
-      return HARDCODED_VALUES.NEXTAUTH_SECRET;
+      // Log an error if missing in production, but return undefined/empty string
+      // to let NextAuth handle the missing secret error clearly.
+      console.error('CRITICAL: NEXTAUTH_SECRET environment variable is not set in production!');
+      return ''; // Return empty or undefined - NextAuth will throw its own error
     }
     
-    // Return the actual secret if available, or hardcoded for development
-    return secret || HARDCODED_VALUES.NEXTAUTH_SECRET;
+    // Return the environment variable value directly, or empty string if not found (should trigger NextAuth error)
+    return secret || ''; 
   },
   
   // Environment checks

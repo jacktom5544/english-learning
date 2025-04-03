@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { safeLog, safeError } from '@/lib/utils';
 import { isAmplifyEnvironment, getNextAuthURL } from '@/lib/env';
+import { jwtVerify } from 'jose';
 
 // Simple health check for authentication system
 export async function GET(request: NextRequest) {
@@ -60,6 +61,21 @@ export async function GET(request: NextRequest) {
       hasAuthCookie,
       cookieExists: hasAuthCookie,
     });
+
+    // Try to decode the token
+    let decodedToken = null;
+    if (token) {
+      try {
+        // Use ONLY the environment variable secret
+        const secret = process.env.NEXTAUTH_SECRET;
+        if (!secret) {
+           throw new Error('NEXTAUTH_SECRET not set for token decoding');
+        }
+        decodedToken = await jwtVerify(token, new TextEncoder().encode(secret));
+      } catch (e) {
+        decodedToken = { error: 'Failed to decode JWT', message: e instanceof Error ? e.message : String(e) };
+      }
+    }
 
     // If we reached here without a major crash, return gathered info
     return NextResponse.json({
