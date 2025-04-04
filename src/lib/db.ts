@@ -1,30 +1,26 @@
-import mongoose from 'mongoose';
+import { MongoClient, Db, MongoClientOptions } from 'mongodb';
 import { safeLog, safeError } from './utils';
-import { MongoClient, MongoClientOptions } from 'mongodb';
 
-// Remove fallback and complex URI logic
+// MongoDB URI from environment variable
 const MONGODB_URI = process.env.MONGODB_URI;
 
 safeLog(`[db.ts] Retrieved MONGODB_URI: ${MONGODB_URI ? 'found' : 'NOT FOUND'}`);
 
 if (!MONGODB_URI) {
   safeError('[db.ts] MONGODB_URI environment variable is not defined or empty!');
-  // Log available env vars for debugging (be careful with sensitive data in real logs)
-  // safeLog('Available process.env keys:', Object.keys(process.env)); 
   throw new Error('Please define the MONGODB_URI environment variable properly.');
 }
 
-// --- RESTORING CACHING LOGIC --- 
+// Cached connection
 let cachedClient: MongoClient | null = null;
-let cachedDb: any = null;
+let cachedDb: Db | null = null;
 
-// --- RESTORING RETRY LOGIC --- 
+// Connection retry settings
 let connectionAttempts = 0;
 const maxConnectionAttempts = 5;
-// Added flag to prevent concurrent connection attempts piling up during backoff
-let isConnecting = false; 
+let isConnecting = false;
 
-export async function connectToDatabase() {
+export async function connectToDatabase(): Promise<{ client: MongoClient; db: Db }> {
   // Check cache first
   if (cachedClient && cachedDb) {
     safeLog('[db.ts] Found cached client/db object.');
@@ -55,23 +51,20 @@ export async function connectToDatabase() {
   }
 
   const opts: MongoClientOptions = {
-    connectTimeoutMS: 15000, 
-    socketTimeoutMS: 60000,  
-    serverSelectionTimeoutMS: 30000, 
-    maxPoolSize: 10,         
-    minPoolSize: 1,          
+    connectTimeoutMS: 15000,
+    socketTimeoutMS: 60000,
+    serverSelectionTimeoutMS: 30000,
+    maxPoolSize: 10,
+    minPoolSize: 1,
   };
 
   try {
     // Set flag to indicate connection attempt is starting
-    isConnecting = true; 
+    isConnecting = true;
     safeLog(`[db.ts] (Attempt ${connectionAttempts + 1}/${maxConnectionAttempts}) No valid cache, attempting NEW MongoDB connection...`);
     const client = await MongoClient.connect(MONGODB_URI, opts);
     const db = client.db();
 
-    // Optional: Ping after new connection to be sure
-    // await db.command({ ping: 1 });
-    
     // Reset connection attempts on success
     connectionAttempts = 0;
 
@@ -94,7 +87,7 @@ export async function connectToDatabase() {
     }
     
     // Calculate exponential backoff delay
-    const backoffDelay = Math.min(1000 * Math.pow(2, connectionAttempts), 10000); 
+    const backoffDelay = Math.min(1000 * Math.pow(2, connectionAttempts), 10000);
     safeLog(`[db.ts] Retrying connection in ${backoffDelay}ms...`);
     isConnecting = false; // Allow retry after delay
     await new Promise(resolve => setTimeout(resolve, backoffDelay));

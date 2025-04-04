@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db';
-import User from '@/models/User';
+import bcrypt from 'bcrypt';
+import { INITIAL_POINTS } from '@/lib/pointSystem';
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,11 +15,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Connect to database
-    await connectToDatabase();
+    // Connect to database using native MongoDB driver
+    const { client, db } = await connectToDatabase();
+    const usersCollection = db.collection('users');
 
     // Check if user already exists
-    const existingUser = await User.findOne({ email });
+    const existingUser = await usersCollection.findOne({ email: email.toLowerCase() });
     if (existingUser) {
       return NextResponse.json(
         { error: 'このメールアドレスは既に登録されています' },
@@ -26,28 +28,44 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create new user
-    const user = new User({
-      email,
-      password,
+    // Hash password manually (since we don't have Mongoose middleware)
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Create new user document
+    const now = new Date();
+    const newUser = {
+      email: email.toLowerCase(),
+      password: hashedPassword,
       name,
-      role: 'user', // Default role is user
-      points: 0, // No initial points - points will be added after subscription
-      pointsLastUpdated: new Date(),
+      image: '',
+      englishLevel: 'beginner',
+      job: '',
+      goal: '',
+      startReason: '',
+      struggles: '',
+      preferredTeacher: 'taro',
+      role: 'user',
+      points: INITIAL_POINTS,
+      pointsLastUpdated: now,
       pointsUsedThisMonth: 0,
-      subscriptionStatus: 'inactive', // Default subscription status
-    });
+      subscriptionStatus: 'inactive',
+      createdAt: now,
+      updatedAt: now
+    };
     
     // Save the user to the database
     try {
-      await user.save();
+      const result = await usersCollection.insertOne(newUser);
       
-      // Verify the user was saved correctly
-      const savedUser = await User.findOne({ email });
+      if (!result.acknowledged || !result.insertedId) {
+        throw new Error('Failed to insert user');
+      }
+      
       console.log('User created:', {
-        userId: savedUser?._id.toString(),
-        points: savedUser?.points,
-        subscriptionStatus: savedUser?.subscriptionStatus
+        userId: result.insertedId.toString(),
+        email,
+        name
       });
       
     } catch (saveError) {
@@ -63,9 +81,8 @@ export async function POST(req: NextRequest) {
       { 
         message: 'ユーザーが正常に登録されました',
         user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
+          email,
+          name
         } 
       },
       { status: 201 }
