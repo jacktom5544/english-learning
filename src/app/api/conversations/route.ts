@@ -132,21 +132,13 @@ export async function POST(req: NextRequest) {
     // Use the updated Mongoose document for AI generation
     const userNameForGreeting = updatedUserMongooseDoc.name || 'there';
 
-    // Create a timeout for the entire AI generation process
-    const AI_TIMEOUT = 8000; // 8 seconds
-    
-    // Generate initial greeting with timeout handling
+    // Generate initial greeting
     let greeting: string;
     try {
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('AI timeout')), AI_TIMEOUT);
-      });
-      
-      const greetingPromise = generateTeacherGreeting(teacher, updatedUserMongooseDoc);
-      const result = await Promise.race([greetingPromise, timeoutPromise]);
-      greeting = result as string;
+      // Assign result directly, assuming it returns string (or fallback string)
+      greeting = await generateTeacherGreeting(teacher, updatedUserMongooseDoc) as string; // Added 'as string'
     } catch (error) {
-      console.error('Error or timeout generating greeting:', error);
+      console.error('Error generating greeting:', error);
       greeting = `Hello ${userNameForGreeting}! I'm your teacher ${teacher}. How can I help you today?`; 
     }
     
@@ -157,18 +149,13 @@ export async function POST(req: NextRequest) {
       timestamp: new Date(),
     };
 
-    // Generate title with timeout handling
+    // Generate title
     let title: string;
     try {
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('AI timeout')), AI_TIMEOUT);
-      });
-      
-      const titlePromise = generateConversationTitle(teacher, initialMessage.content);
-      const result = await Promise.race([titlePromise, timeoutPromise]);
-      title = result as string;
+      // Assign result directly, assuming it returns string (or fallback string)
+      title = await generateConversationTitle(teacher, initialMessage.content) as string; // Added 'as string'
     } catch (error) {
-      console.error('Error or timeout generating title:', error);
+      console.error('Error generating title:', error);
       title = `Chat with ${teacher} - ${new Date().toLocaleDateString()}`; 
     }
 

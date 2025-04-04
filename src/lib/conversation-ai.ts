@@ -100,24 +100,18 @@ export async function generateTeacherGreeting(teacher: TeacherType, user: IUser)
   `;
   
   try {
-    // Create a timeout promise
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('AI response timeout')), 8000);
-    });
-    
-    // Use Deepseek API to generate response with timeout
+    // Use Deepseek API to generate response directly
     const messages: AIMessage[] = [
       { role: 'user', content: prompt }
     ];
     
-    // Race between the API call and timeout
-    const responsePromise = generateAIResponse(messages, {
+    // Await the API call directly without Promise.race
+    const response = await generateAIResponse(messages, {
       maxTokens: 250,
       temperature: 0.7,
       systemPrompt: TEACHER_PROFILES[teacher].systemPrompt
     });
     
-    const response = await Promise.race([responsePromise, timeoutPromise]);
     return response;
   } catch (error) {
     console.error('Error generating teacher greeting:', error);
@@ -324,30 +318,30 @@ export async function correctGrammar(text: string): Promise<string> {
 /**
  * Creates a title for a new conversation based on initial message
  */
-export async function generateConversationTitle(teacher: TeacherType, initialMessage: string): Promise<string> {
+export async function generateConversationTitle(
+  teacher: TeacherType,
+  initialMessageContent: string
+): Promise<string> {
   try {
-    // Ask the AI to generate a title
+    // Create a prompt for the AI
     const prompt = `
       Generate a short, descriptive title (5 words or less) for a conversation that starts with this message:
-      "${initialMessage}"
+      "${initialMessageContent}"
       
       The title should reflect the likely topic or theme of the conversation.
       Only respond with the title text, nothing else.
     `;
     
-    const response = await generateAIResponse([{ role: 'user', content: prompt }], {
-      maxTokens: 30,
-      temperature: 0.7,
+    // Await the API call directly without Promise.race
+    const title = await generateAIResponse([{ role: 'user', content: prompt }], {
+      maxTokens: 50,
+      temperature: 0.5,
       systemPrompt: 'You are a helpful assistant that creates concise, meaningful titles for conversations.'
     });
-    
-    // Clean up the response and return it as the title
-    const title = response.trim().replace(/^"(.+)"$/, '$1');
-    return title || `Chat with ${TEACHER_PROFILES[teacher].name}`;
+
+    return title.replace(/"/g, ''); // Keep title cleaning logic
   } catch (error) {
     console.error('Error generating conversation title:', error);
-    
-    // Fallback to basic title
-    return `Chat with ${TEACHER_PROFILES[teacher].name}`;
+    return `Chat with ${teacher} - ${new Date().toLocaleDateString()}`; // Keep fallback
   }
 } 
