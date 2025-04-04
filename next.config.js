@@ -13,6 +13,27 @@ const nextConfig = {
   // Increase build timeout
   staticPageGenerationTimeout: 180,
   
+  // Add image domain configuration
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'res.cloudinary.com',
+        // Optionally add port and pathname if needed, but usually not for Cloudinary
+        // port: '', 
+        // pathname: '/your-account/**', // Example if images are path-specific
+      },
+      // Add other domains if needed, e.g., for default user images
+      // {
+      //   protocol: 'https',
+      //   hostname: 'example.com', 
+      // },
+    ],
+    // Optional: configure device sizes, image sizes, etc.
+    // deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
+    // imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
+  },
+
   // Only add webpack config for handling server-only modules 
   webpack: (config, { isServer }) => {
     // Add proper path aliases for Amplify environment
