@@ -1,12 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import User from '@/models/User';
-import Writing from '@/models/Writing';
-import connectDB from '@/lib/db';
-import { generateAIResponse, provideWritingFeedback } from '@/lib/ai';
-import { consumePoints } from '@/lib/serverUtils';
+// Remove Mongoose models
+// import User from '@/models/User';
+// import Writing from '@/models/Writing';
+// Import MongoDB client and types
+import getClient from '@/lib/db'; 
+// Import Db type from mongodb
+import { ObjectId, WithId, Db, OptionalUnlessRequiredId, Document } from 'mongodb';
+import { IUser } from '@/models/User'; // Keep IUser interface
+// Keep IWriting for reference if needed, but don't use for native insert object type
+// import { IWriting } from '@/models/Writing'; 
+// AI and utils imports remain
+import { generateAIResponse, provideWritingFeedback } from '@/lib/ai'; 
+import { consumePoints } from '@/lib/serverUtils'; // Keep consumePoints for now
 import { POINT_CONSUMPTION } from '@/lib/pointSystem';
+// Remove unused TeacherType import
+// import { TeacherType } from '@/lib/teachers'; 
+// Use JapaneseTeacherKey from japanese-teachers
+import { JAPANESE_TEACHER_PROFILES, JapaneseTeacherKey } from '@/lib/japanese-teachers';
 
 // Use predefined fake responses when API is not available
 const FAKE_TOPIC = '今週末に行った活動について英語で説明してください。';
@@ -15,7 +27,7 @@ const FAKE_FEEDBACK = {
   score: 50
 };
 
-// Generate a topic using DeepSeek AI
+// Restore generateTopic function definition
 async function generateTopic(level: string, job: string, goal: string): Promise<string> {
   console.log(`Generating topic for level: ${level}`);
   
@@ -37,7 +49,6 @@ async function generateTopic(level: string, job: string, goal: string): Promise<
     トピックのみを返してください。追加の説明、番号付け、引用符は不要です。
   `;
 
-  // Define fallback topics based on English level
   const fallbackTopics: Record<string, string[]> = {
     beginner: [
       '自己紹介を英語で書いてください。',
@@ -56,20 +67,16 @@ async function generateTopic(level: string, job: string, goal: string): Promise<
     ]
   };
 
-  // Get appropriate fallback topics based on level or use intermediate as default
   const levelFallbacks = fallbackTopics[level.toLowerCase()] || fallbackTopics.intermediate;
-  // Select a random fallback topic
   const randomFallback = levelFallbacks[Math.floor(Math.random() * levelFallbacks.length)];
 
   try {
-    // Make sure to call AI API in a try/catch block
     const topicText = await generateAIResponse([{ role: 'user', content: prompt }], {
       maxTokens: 150,
       temperature: 0.7,
       systemPrompt: 'あなたは日本人の英語学習者向けに英作文トピックを生成する英語教師です。学習者のレベルとニーズに合った適切なトピックを日本語で提供してください。'
     });
     
-    // Validate and clean the topic
     const cleanedTopic = topicText ? topicText.trim() : '';
     
     if (cleanedTopic.length < 5) {
@@ -85,247 +92,243 @@ async function generateTopic(level: string, job: string, goal: string): Promise<
   }
 }
 
-// Generate feedback for English writing using DeepSeek AI
+// Modify generateFeedback wrapper function to accept personaPrompt
 async function generateFeedback(
   level: string, 
   topic: string, 
   content: string,
-  teacher: string = 'taro'
-): Promise<{feedback: string, score: number}> {
+  teacherKey: JapaneseTeacherKey, // Use JapaneseTeacherKey type
+  personaPrompt: string // Add personaPrompt parameter
+): Promise<string> { 
   try {
-    console.log(`Generating feedback for level: ${level}, teacher: ${teacher}`);
-    console.log(`Content length: ${content.length} chars`);
-    
-    if (!content || content.trim().length < 10) {
-      return {
-        feedback: "テキストが短すぎるため、フィードバックを生成できません。もう少し長い文章を入力してください。",
-        score: 0
-      };
-    }
-
-    try {
-      const feedbackText = await provideWritingFeedback(content, "comprehensive", teacher) || '';
-      
-      // Extract score from feedback (assuming the AI includes a score in the feedback)
-      let score = 70; // Default score
-      const scoreMatch = feedbackText.match(/(\d{1,3})\s*点/);
-      if (scoreMatch && scoreMatch[1]) {
-        const parsedScore = parseInt(scoreMatch[1], 10);
-        if (!isNaN(parsedScore) && parsedScore >= 0 && parsedScore <= 100) {
-          score = parsedScore;
-        }
-      }
-      
-      return {
-        feedback: feedbackText,
-        score: score
-      };
-    } catch (aiError) {
-      console.error("AI error in generateFeedback:", aiError);
-      return FAKE_FEEDBACK;
-    }
+    console.log(`Requesting feedback generation for topic: ${topic.substring(0, 30)}... as teacher: ${teacherKey}`);
+    // Pass personaPrompt to the underlying AI function
+    const feedbackText = await provideWritingFeedback(topic, content, teacherKey, personaPrompt); 
+    return feedbackText;
   } catch (error) {
-    console.error("Error generating feedback:", error);
-    return FAKE_FEEDBACK;
+    console.error("Error generating feedback in wrapper:", error);
+    return FAKE_FEEDBACK.feedback; 
   }
 }
 
-// Get saved writings or get a new topic
+// Define types for DB documents - Remove score
+type UserDoc = WithId<Document> & Partial<IUser>;
+type WritingDoc = WithId<{ 
+    userId: ObjectId;
+    topic: string;
+    content: string;
+    feedback: string;
+    // score: number; // Removed score
+    preferredTeacher: string;
+    createdAt: Date;
+    updatedAt: Date; 
+}>;
+
+interface NewWritingData {
+    userId: ObjectId;
+    topic: string;
+    content: string;
+    feedback: string;
+    // score: number; // Removed score
+    preferredTeacher: string;
+    createdAt: Date; 
+    updatedAt: Date; 
+}
+
+// GET handler - Refactored
 export async function GET(req: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'ログインが必要です' },
-        { status: 401 }
-      );
-    }
-    
-    const url = new URL(req.url);
-    const action = url.searchParams.get('action');
-    
-    if (action === 'topic') {
-      try {
-        // Get skipPointsConsumption from query param instead of body
-        const skipPointsConsumption = url.searchParams.get('skipPointsConsumption') === 'true';
+    try {
+        const session = await getServerSession(authOptions);
+        if (!session?.user?.id) {
+            return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
+        }
 
-        // Get user info to personalize topic
-        await connectDB();
-        const user = await User.findById(session.user.id);
-        
-        if (!user) {
-          return NextResponse.json(
-            { error: 'ユーザーが見つかりません' },
-            { status: 404 }
-          );
-        }
-        
-        // Check if user has enough points (if not skipping points consumption)
-        if (!skipPointsConsumption && user.points < POINT_CONSUMPTION.WRITING_ESSAY) {
-          return NextResponse.json(
-            { 
-              error: 'ポイントが不足しています',
-              details: `必要なポイント: ${POINT_CONSUMPTION.WRITING_ESSAY}, 現在のポイント: ${user.points}`
-            },
-            { status: 403 }
-          );
-        }
-        
-        // Generate a writing topic
-        const topic = await generateTopic(
-          user.englishLevel || 'intermediate',
-          user.job || '',
-          user.goal || ''
-        );
-        
-        if (!topic || topic.trim().length === 0) {
-          return NextResponse.json(
-            { 
-              topic: '今週末に行った活動について英語で説明してください。',
-              generated: false,
-              message: 'フォールバックトピックを使用しました'
+        const userId = new ObjectId(session.user.id); // Convert ID upfront
+
+        const url = new URL(req.url);
+        const action = url.searchParams.get('action');
+
+        // Get DB client and cast to Db
+        const { db: _db } = await getClient(); 
+        const db = _db as Db;
+
+        if (action === 'topic') {
+            try {
+                const skipPointsConsumption = url.searchParams.get('skipPointsConsumption') === 'true';
+
+                // Fetch user using native driver
+                const usersCollection = db.collection<UserDoc>('users');
+                const user = await usersCollection.findOne({ _id: userId });
+
+                if (!user) {
+                    return NextResponse.json({ error: 'ユーザーが見つかりません' }, { status: 404 });
+                }
+
+                // Check points (use user.points directly)
+                if (!skipPointsConsumption && (user.points ?? 0) < POINT_CONSUMPTION.WRITING_ESSAY) {
+                    return NextResponse.json(
+                        { error: 'ポイントが不足しています', details: `必要なポイント: ${POINT_CONSUMPTION.WRITING_ESSAY}, 現在のポイント: ${user.points ?? 0}` },
+                        { status: 403 }
+                    );
+                }
+
+                // Generate topic (logic remains same)
+                const topic = await generateTopic(
+                    user.englishLevel || 'intermediate',
+                    user.job || '',
+                    user.goal || ''
+                );
+
+                if (!topic || topic.trim().length === 0) {
+                    return NextResponse.json({ topic: FAKE_TOPIC, generated: false, message: 'フォールバックトピックを使用しました' });
+                }
+                return NextResponse.json({ topic, generated: true });
+
+            } catch (topicError) {
+                console.error("Error in topic generation route:", topicError);
+                return NextResponse.json({ topic: FAKE_TOPIC, generated: false, error: 'トピック生成中にエラーが発生しました' });
             }
-          );
+        } else {
+            // Get writing history using native driver
+            const writingsCollection = db.collection<WritingDoc>('writings'); // Assuming collection name is 'writings'
+            const writings = await writingsCollection
+                .find({ userId: userId }) // Use ObjectId
+                .sort({ createdAt: -1 })
+                // Remove score from projection
+                .project({ _id: 1, topic: 1, content: 1, feedback: 1, preferredTeacher: 1, createdAt: 1 })
+                .limit(20)
+                .toArray(); // Convert cursor to array
+
+             // Convert _id to string for each document before sending response
+             const writingsWithStringIds = writings.map(w => ({
+                 ...w,
+                 _id: w._id.toString(),
+                 userId: w.userId?.toString() // Also convert userId if present and needed
+             }));
+
+            return NextResponse.json(writingsWithStringIds);
         }
-        
-        return NextResponse.json({ 
-          topic,
-          generated: true
-        });
-      } catch (topicError) {
-        console.error("Error in topic generation route:", topicError);
-        // Return a fallback topic with a flag indicating it's a fallback
-        return NextResponse.json({ 
-          topic: '今週末に行った活動について英語で説明してください。',
-          generated: false,
-          error: 'トピック生成中にエラーが発生しました'
-        });
-      }
-    } else {
-      // Get the user's saved writings
-      await connectDB();
-      const writings = await Writing.find({ userId: session.user.id })
-        .sort({ createdAt: -1 })
-        .select('_id topic content feedback score preferredTeacher createdAt')
-        .limit(20);
-      
-      return NextResponse.json(writings);
+    } catch (error) {
+        console.error('Error in writing GET route:', error);
+        let errorMessage = 'リクエストの処理に失敗しました';
+        if (error instanceof Error) errorMessage = error.message;
+        // Handle specific errors like timeouts if needed
+         if (error instanceof Error && error.name === 'MongoTimeoutError') {
+             errorMessage = 'Database operation timed out fetching writing data.';
+             return NextResponse.json({ error: errorMessage }, { status: 504 }); // Gateway Timeout
+         }
+        return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
-  } catch (error) {
-    console.error('Error in writing GET route:', error);
-    let errorMessage = 'リクエストの処理に失敗しました';
-    let errorDetails = undefined;
-    
-    if (error instanceof Error) {
-      errorMessage = error.message;
-      errorDetails = (error as any).details || undefined;
-    }
-    
-    return NextResponse.json(
-      { 
-        error: errorMessage,
-        details: errorDetails
-      },
-      { status: 500 }
-    );
-  }
 }
 
-// Submit a writing for feedback
+// POST handler - Refactored
 export async function POST(req: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'ログインが必要です' },
-        { status: 401 }
-      );
-    }
+    try {
+        const session = await getServerSession(authOptions);
+        if (!session?.user?.id) {
+            return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
+        }
+        const userId = new ObjectId(session.user.id); // Convert ID upfront
 
-    const { topic, content, preferredTeacher, skipPointsConsumption } = await req.json();
-    
-    if (!topic || !content) {
-      return NextResponse.json(
-        { error: 'トピックと文章が必要です' },
-        { status: 400 }
-      );
-    }
+        const { topic, content, preferredTeacher, skipPointsConsumption } = await req.json();
 
-    await connectDB();
-    
-    // Get user's English level and preferred teacher
-    const user = await User.findById(session.user.id);
-    if (!user) {
-      return NextResponse.json(
-        { error: 'ユーザーが見つかりません' },
-        { status: 404 }
-      );
-    }
-    
-    // Check and consume points only if not skipped
-    let updatedUser = user;
-    if (!skipPointsConsumption) {
-      updatedUser = await consumePoints(user._id, POINT_CONSUMPTION.WRITING_ESSAY);
-      
-      if (!updatedUser) {
-        return NextResponse.json(
-          { 
-            error: 'ポイントが不足しています',
-            details: `必要なポイント: ${POINT_CONSUMPTION.WRITING_ESSAY}, 現在のポイント: ${user.points}`
-          },
-          { status: 403 }
+        if (!topic || !content) {
+            return NextResponse.json({ error: 'トピックと内容は必須です' }, { status: 400 });
+        }
+        if (content.length > 5000) { // Example length limit
+             return NextResponse.json({ error: 'Content is too long (max 5000 chars).' }, { status: 400 });
+        }
+
+        // Get DB client and cast to Db
+        const { db: _db } = await getClient();
+        const db = _db as Db;
+        const usersCollection = db.collection<UserDoc>('users');
+        // Use WritingDoc type for the collection definition
+        const writingsCollection = db.collection<WritingDoc>('writings');
+
+        // Fetch user using native driver to get level and check points
+        const user = await usersCollection.findOne({ _id: userId });
+        if (!user) {
+            // This handles the 'users.findOne() buffering timed out' error source
+            return NextResponse.json({ error: 'ユーザーが見つかりません' }, { status: 404 });
+        }
+
+        // Consume points - Use correct key
+         if (!skipPointsConsumption) {
+             // Use WRITING_ESSAY key
+             const updatedUserMongooseDoc = await consumePoints(session.user.id, POINT_CONSUMPTION.WRITING_ESSAY);
+             if (!updatedUserMongooseDoc) {
+                 return NextResponse.json({ error: 'ポイントが不足しています', currentPoints: user.points ?? 0 }, { status: 403 });
+             }
+             // Optionally update local user points representation if needed, but not strictly necessary here
+         }
+
+        // Determine teacher key to use, default to 'taro'
+        const teacherKeyToUse = (preferredTeacher || user.preferredTeacher || 'taro') as JapaneseTeacherKey;
+
+        // --- Get Persona Prompt --- 
+        // Retrieve the persona prompt for the selected teacher
+        const teacherProfile = JAPANESE_TEACHER_PROFILES[teacherKeyToUse];
+        const personaPrompt = teacherProfile?.writingFeedbackPersonaPrompt || 
+                              JAPANESE_TEACHER_PROFILES.taro.writingFeedbackPersonaPrompt; // Fallback to taro's prompt
+        
+        if (!teacherProfile) {
+            console.warn(`Teacher profile not found for key: ${teacherKeyToUse}, falling back to taro's persona.`);
+        }
+        // ------------------------- 
+
+        // Generate feedback - Pass personaPrompt
+        const feedbackText = await generateFeedback( 
+            user.englishLevel || 'intermediate', 
+            topic,
+            content,
+            teacherKeyToUse,
+            personaPrompt // Pass the retrieved persona prompt
         );
-      }
+
+        // Create new writing entry
+        const newWritingData: NewWritingData = {
+            userId: userId, 
+            topic: topic,
+            content: content,
+            feedback: feedbackText, 
+            preferredTeacher: teacherKeyToUse, 
+            createdAt: new Date(),
+            updatedAt: new Date() 
+        };
+
+        // Insert the writing entry
+        const insertResult = await writingsCollection.insertOne(newWritingData as OptionalUnlessRequiredId<WritingDoc>); 
+
+        if (!insertResult.insertedId) {
+            console.error("Failed to insert new writing document for user:", userId);
+            return NextResponse.json({ error: 'ライティング履歴の保存に失敗しました' }, { status: 500 });
+        }
+
+        // Fetch the newly created document to return it
+         const createdWritingDoc = await writingsCollection.findOne({ _id: insertResult.insertedId });
+
+         if (!createdWritingDoc) {
+             console.error("Could not retrieve created writing document with ID:", insertResult.insertedId);
+             return NextResponse.json({ error: '作成されたライティングエントリの取得に失敗しました' }, { status: 500 });
+         }
+
+         // Return the created document, converting _id to string
+         return NextResponse.json({
+             ...createdWritingDoc,
+             _id: createdWritingDoc._id.toString(),
+             userId: createdWritingDoc.userId?.toString()
+         });
+
+    } catch (error) {
+        console.error('Error in writing POST route:', error);
+        let errorMessage = 'リクエストの処理に失敗しました';
+        if (error instanceof Error) errorMessage = error.message;
+        // Handle specific errors
+         if (error instanceof Error && error.name === 'MongoTimeoutError') {
+             errorMessage = 'Database operation timed out saving writing data.';
+             return NextResponse.json({ error: errorMessage }, { status: 504 });
+         }
+        return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
-    
-    // Get the teacher from request or from user profile
-    const teacherToUse = preferredTeacher || user.preferredTeacher || 'taro';
-    console.log('Using teacher for feedback:', teacherToUse);
-    
-    // Generate feedback using the appropriate teacher character
-    const { feedback: feedbackText, score } = await generateFeedback(
-      user.englishLevel || 'intermediate', 
-      topic, 
-      content,
-      teacherToUse
-    );
-    
-    // Create a new writing entry
-    const writingEntry = new Writing({
-      userId: session.user.id,
-      topic,
-      content,
-      feedback: feedbackText,
-      score,
-      preferredTeacher: teacherToUse
-    });
-    
-    await writingEntry.save();
-    
-    return NextResponse.json({
-      _id: writingEntry._id,
-      feedback: feedbackText,
-      score,
-      preferredTeacher: teacherToUse
-    });
-  } catch (error) {
-    console.error('Error in writing POST route:', error);
-    let errorMessage = 'リクエストの処理に失敗しました';
-    let errorDetails = undefined;
-    
-    if (error instanceof Error) {
-      errorMessage = error.message;
-      errorDetails = (error as any).details || undefined;
-    }
-    
-    return NextResponse.json(
-      { 
-        error: errorMessage,
-        details: errorDetails
-      },
-      { status: 500 }
-    );
-  }
 }

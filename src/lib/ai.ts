@@ -1,5 +1,10 @@
+import OpenAI from 'openai';
+import { JapaneseTeacherKey } from './japanese-teachers'; 
+
 import deepseek from './deepseek';
 import 'server-only';
+// Remove unused TeacherType import
+// import { TeacherType } from './teachers';
 
 // Define the role type to match OpenAI's expectations
 type MessageRole = 'system' | 'user' | 'assistant';
@@ -175,113 +180,59 @@ export async function generateEnglishQuiz(
 }
 
 /**
- * Provide feedback on a student's English writing
- * @param text - The student's text to analyze
- * @param feedbackType - Type of feedback requested (grammar, style, etc.)
- * @param teacher - The preferred teacher character ('hiroshi', 'reiko', 'iwao', 'taro')
- * @returns Detailed feedback
+ * Provide feedback on a student's English writing, adopting a specific Japanese teacher persona.
+ * @param topic - The assigned writing topic.
+ * @param text - The student's text to analyze.
+ * @param teacherKey - The key identifying the Japanese teacher persona.
+ * @param personaPrompt - The specific system prompt defining the teacher's persona and feedback style.
+ * @returns Detailed feedback string (no score).
  */
 export async function provideWritingFeedback(
-  text: string, 
-  feedbackType: string = 'comprehensive',
-  teacher: string = 'taro'
-) {
-  let teacherPrompt = '';
+  topic: string,
+  text: string,
+  teacherKey: JapaneseTeacherKey, // Use JapaneseTeacherKey
+  personaPrompt: string // Add personaPrompt parameter
+): Promise<string> {
   
-  switch(teacher) {
-    case 'hiroshi':
-      teacherPrompt = `
-        フィードバックは関西弁で漫才風の明るい口調で記述してください。
-        初心者あるあるの文法ぐちゃぐちゃの英文でも気さくにチェックしてアドバイスしてください。
-        口調はちょっとトゲがあるかもだけど心根は優しい先生として回答してください。
-        「やねん」「〜やで」「〜ちゃう？」などの関西弁を使ってください。
-        
-        例: 「おっ！この文法ちょっと違うかもしれへんな。でもな、この部分はええ感じやで！」
-      `;
-      break;
-    case 'reiko':
-      teacherPrompt = `
-        フィードバックは「ですわ」口調の上品な女性として記述してください。
-        頭脳明晰、容姿端麗で一見接しにくいように感じるけど生徒想いの優しい先生として回答してください。
-        「ですわ」「〜でございますわ」「わたくし」などの言葉を使ってください。
-        分かりやすく丁寧に、特に初心者の方には文法で躓きやすい部分を手取り足取り教えるスタイルで回答してください。
-        
-        例: 「この文法の使い方は少し異なりますわ。このように書くとより自然ですわ。」
-      `;
-      break;
-    case 'iwao':
-      teacherPrompt = `
-        フィードバックは昭和のスタイルを貫く厳格な男性として記述してください。
-        文法ミスを厳しく指摘しますが、生徒想いがとても強い先生として回答してください。
-        「〜じゃねーぞ」「テメー」「〜するんだよ！」などの言葉を使い、時に厳しい言葉も使いますが、
-        その厳しさは生徒を成長させるためであることを示してください。
-        
-        例: 「この文法、なんだこれは！こんなんじゃダメだ！ここはこう書くんだよ！でも、この部分は良く書けている。その調子だ！」
-      `;
-      break;
-    case 'taro':
-    default:
-      teacherPrompt = `
-        フィードバックは標準語で理詰めで丁寧な口調で記述してください。
-        若手の先生として、欠点らしい欠点も無く、どんなタイプの生徒でも上手く対応するスタイルで回答してください。
-        「〜ですね」「〜しましょう」「〜だと思います」などの丁寧な言葉を使い、
-        文法の間違いを論理的に、かつ励ましながら説明してください。
-        
-        例: 「ここの文法は少し異なります。このように書くとより自然な表現になりますよ。」
-      `;
-      break;
-  }
+  // The personaPrompt received as argument defines the teacher's characteristics.
+  // Use it directly as the system prompt.
+  const systemPrompt = personaPrompt;
 
-  const prompt = `
-    以下の英文を添削し、${feedbackType}フィードバックを提供してください:
-    
-    ${text}
-    
-    ${teacherPrompt}
-    
-    もしもAIが作成したトピックとユーザーが作成した英文が関連性がない場合は、それについても指摘してください。
-    
-    以下のフォーマットで回答してください:
-    
-    1. 全体的な評価 (日本語)
-    
-    (ここに評価の内容)
-    
-    2. 文法の誤りと修正案 (具体的に指摘)
-    
-    (ここに文法の誤りと修正案)
-    
-    3. 表現の改善点 (より自然な言い回し)
-    
-    (ここに表現の改善点)
-    
-    4. 採点 (100点満点)
-    
-    (ここに点数)
-    
-    5. 励ましのコメント
-    
-    (ここに励ましのコメント)
+  const userPrompt = `
+    Please act as the English teacher defined by the system prompt.
+    A student has written the following text based on the topic provided.
+
+    Topic: \"${topic}\"
+    Student's Writing:
+    \"${text}\"
+
+    Your task is to provide comprehensive feedback **in Japanese**. Follow these instructions precisely:
+    1. Relevance Check: First, evaluate if the student's writing is relevant to the given topic. If it is clearly off-topic or only slightly related, mention this kindly in your feedback (**Japanese**) *before* addressing other points.
+    2. Detailed Feedback: Provide specific feedback **in Japanese** on grammar, vocabulary usage, spelling, sentence structure, and overall clarity. Offer concrete examples for correction and explain *briefly* **in Japanese** why the changes are suggested.
+    3. Tone: Maintain the persona and tone described in the system prompt throughout your feedback (e.g., if the persona prompt specifies Kansai dialect, use it, but provide feedback in Japanese).
+    4. NO SCORE: Do NOT include any numerical score, points, or grade.
+    5. Concluding Remark: End with an encouraging closing statement **in Japanese**, suitable for the teacher's persona.
+
+    Structure your feedback clearly **in Japanese**.
   `;
 
   try {
-    // Generate the feedback using the AI
-    const systemPrompt = `
-      あなたは日本人の英語学習者のための添削を行う英語教師です。
-      ${teacherPrompt}
-      フィードバックは具体的で分かりやすく、学習者の英語レベル向上に役立つものにしてください。
-    `;
+    // Update console log to use JapaneseTeacherKey
+    console.log(`Generating writing feedback as Japanese teacher: ${teacherKey} (in Japanese)`);
+    const feedbackText = await generateAIResponse(
+        [{ role: 'user', content: userPrompt }], 
+        {
+          maxTokens: 1000, 
+          temperature: 0.6,
+          systemPrompt: systemPrompt // Use the passed personaPrompt here
+        }
+    );
     
-    const response = await generateAIResponse([{ role: 'user', content: prompt }], {
-      maxTokens: 1500,
-      temperature: 0.7,
-      systemPrompt
-    });
-    
-    return response;
-  } catch (error: any) {
-    console.error('Error providing writing feedback:', error);
-    return `申し訳ありません。フィードバックの生成中にエラーが発生しました。後でもう一度お試しください。\n\nエラー: ${error.message || '不明なエラー'}`;
+    return feedbackText || "フィードバックの生成に失敗しました。"; 
+
+  } catch (error) {
+    console.error(`Error generating writing feedback for Japanese teacher ${teacherKey}:`, error);
+    return "フィードバックの生成中にエラーが発生しました。"; 
   }
 }
 

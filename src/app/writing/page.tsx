@@ -6,64 +6,52 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { POINT_CONSUMPTION } from '@/lib/pointSystem';
 import { useUserPoints } from '@/components/providers/UserPointsProvider';
+import { JAPANESE_TEACHER_PROFILES, JapaneseTeacherKey } from '@/lib/japanese-teachers';
+import LoadingAnimation from '@/app/conversation/components/LoadingAnimation';
 
 interface WritingEntry {
   _id: string;
   topic: string;
   content: string;
   feedback: string;
-  score: number;
   createdAt: string;
-  preferredTeacher?: 'hiroshi' | 'reiko' | 'iwao' | 'taro';
+  preferredTeacher?: JapaneseTeacherKey; // Use Japanese key type
 }
 
 interface UserProfile {
   englishLevel: string;
   job: string;
   goal: string;
-  preferredTeacher: 'hiroshi' | 'reiko' | 'iwao' | 'taro';
+  preferredTeacher: JapaneseTeacherKey; // Use Japanese key type
   points: number | null;
 }
 
-const teacherInfo = {
-  hiroshi: {
-    name: 'ひろし先生',
-    image: '/hiroshi.png',
-    messageTemplate: '{name}はんに合ったトピックを作るからそれに合った英文を書いてや！結果を楽しみにしてるで！',
-    prefix: '俺'
-  },
-  reiko: {
-    name: '玲子先生',
-    image: '/reiko.png',
-    messageTemplate: '{name}さんに合ったトピックを作りますのでそれに合った英文を書いて下さいね！結果を楽しみにしてますわ！',
-    prefix: 'わたくし'
-  },
-  iwao: {
-    name: '巌男先生',
-    image: '/iwao.png',
-    messageTemplate: 'お前に合ったトピックを作るからそれに合った英文を書いてこい！おい、間違ってもガッカリさせんじゃねーぞ！',
-    prefix: '俺'
-  },
-  taro: {
-    name: '太郎先生',
-    image: '/taro.png',
-    messageTemplate: '{name}さんに合ったトピックを作るのでそれに合った英文を書いて下さい。結果を楽しみにしてますね。',
-    prefix: '僕'
-  }
+// Define a structure that includes the 'prefix' property used in TeacherMessage
+interface DisplayTeacherProfile {
+    name: string;
+    image: string;
+    messageTemplate: string;
+    prefix: string; 
+}
+
+// Create the teacher info object using only Japanese teachers
+// The Record key is now JapaneseTeacherKey
+const teacherInfo: Record<JapaneseTeacherKey, DisplayTeacherProfile> = {
+  // Use only Japanese Teachers from the imported profiles
+  ...JAPANESE_TEACHER_PROFILES 
 };
 
 interface TeacherMessageProps {
-  teacher: 'hiroshi' | 'reiko' | 'iwao' | 'taro';
+  teacher: JapaneseTeacherKey; // Use Japanese key type
 }
 
 function TeacherMessage({ teacher }: TeacherMessageProps) {
   const { data: session } = useSession();
-  const info = teacherInfo[teacher];
+  // Use JapaneseTeacherKey for type assertion and default to 'taro'
+  const info = teacherInfo[teacher as JapaneseTeacherKey] || teacherInfo.taro; 
   
-  // Get user's name from session or use a fallback
   const userName = session?.user?.name || '';
   
-  // Create message from template
   const message = info.messageTemplate.replace('{name}', userName);
   
   return (
@@ -98,7 +86,6 @@ export default function WritingPage() {
   const [writingId, setWritingId] = useState('');
   const [userContent, setUserContent] = useState('');
   const [feedback, setFeedback] = useState('');
-  const [score, setScore] = useState(0);
   const [isTopicGenerated, setIsTopicGenerated] = useState(false);
   const [isFeedbackReceived, setIsFeedbackReceived] = useState(false);
   const [isGeneratingTopic, setIsGeneratingTopic] = useState(false);
@@ -128,7 +115,7 @@ export default function WritingPage() {
           englishLevel: userData.englishLevel || 'beginner',
           job: userData.job || '',
           goal: userData.goal || '',
-          preferredTeacher: userData.preferredTeacher || 'taro',
+          preferredTeacher: userData.preferredTeacher || 'taro', // Default preferred teacher is 'taro'
           points: points, // Use points from UserPointsProvider
         });
         
@@ -210,7 +197,11 @@ export default function WritingPage() {
 
     setIsGeneratingTopic(true);
     setMessage('');
-
+    setIsFeedbackReceived(false);
+    setFeedback('');
+    setUserContent('');
+    setWordCount(0);
+    
     try {
       // Consume points client-side first
       const pointsConsumed = await consumePoints(POINT_CONSUMPTION.WRITING_ESSAY);
@@ -262,13 +253,13 @@ export default function WritingPage() {
       setIsFeedbackReceived(false);
       setUserContent('');
       setFeedback('');
-      setScore(0);
       setWordCount(0);
       
       // Check if this is a fallback topic and show message if needed
       if (data.generated === false) {
         setMessage(data.message || 'AIからのトピック生成ができませんでした。代わりのトピックを表示しています。');
       }
+      setMessage('新しいトピックが生成されました！');
     } catch (error: any) {
       console.error('Failed to generate topic:', error);
       setMessage(`トピックの生成に失敗しました。${error.message || 'APIエラーが発生しました。しばらくしてからもう一度お試しください。'}`);
@@ -279,18 +270,17 @@ export default function WritingPage() {
       }
     } finally {
       setIsGeneratingTopic(false);
+      refreshPoints();
     }
   };
 
   const submitWriting = async () => {
-    if (!isTopicGenerated || !topic || !userContent) {
-      setMessage('トピックと内容を入力してください。');
+    if (!topic || !userContent.trim()) {
+      setMessage('トピックと英作文の両方を入力してください。');
       return;
     }
-
-    // Check if the user has enough points
-    if (!hasEnoughPoints()) {
-      setMessage(`ポイントが不足しています。必要なポイント: ${POINT_CONSUMPTION.WRITING_ESSAY}, 現在のポイント: ${points || 0}`);
+    if (wordCount > 400) {
+      setMessage('Word count exceeds the limit (400 words).');
       return;
     }
 
@@ -304,67 +294,37 @@ export default function WritingPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          topic,
+          topic: topic,
           content: userContent,
-          skipPointsConsumption: true // Points already consumed at topic generation
+          preferredTeacher: userProfile?.preferredTeacher,
+          skipPointsConsumption: false
         }),
       });
 
       if (!response.ok) {
-        let errorMessage = 'フィードバックの生成に失敗しました';
-        
-        try {
-          const errorData = await response.json();
-          console.error('Failed to submit writing:', errorData);
-          
-          // Handle insufficient points error
-          if (response.status === 403 && errorData.error === 'ポイントが不足しています') {
-            setMessage('ポイントが不足しています。プロフィールページでポイント状況を確認してください。');
-            if (errorData.details) {
-              setMessage(prev => `${prev}\n${errorData.details}`);
-            }
-            return;
-          }
-          
-          errorMessage = errorData?.error || errorData?.details || errorMessage;
-        } catch (parseError) {
-          console.error('Error parsing error response:', parseError);
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Failed to submit writing:', errorData);
+        if (response.status === 403 && errorData.error === 'ポイントが不足しています') {
+          setMessage(`ポイントが不足しています。現在のポイント: ${errorData.currentPoints ?? points ?? 'N/A'}`);
+          refreshPoints();
+          return;
         }
-        
-        throw new Error(errorMessage);
+        throw new Error(errorData.error || 'フィードバックの取得に失敗しました。');
       }
-      
-      const data = await response.json();
-      
-      console.log('Feedback response data:', data);
-      
-      if (!data.feedback || typeof data.score !== 'number') {
-        console.error('Invalid response format:', data);
-        throw new Error('サーバーからの応答形式が不正です');
-      }
-      
-      // Set the writing ID from the response
-      if (data._id) {
-        setWritingId(data._id);
-      }
-      
+
+      const data: WritingEntry = await response.json();
+
       setFeedback(data.feedback);
-      setScore(data.score);
+      setWritingId(data._id);
       setIsFeedbackReceived(true);
-
-      // Refresh writing history
+      setMessage('フィードバックを受け取りました！');
+      
       fetchWritingHistory();
-
-      // Update points after successful submission
       refreshPoints();
     } catch (error: any) {
-      console.error('Failed to submit writing:', error);
-      setMessage(`フィードバックの生成に失敗しました。${error.message || 'APIエラーが発生しました。しばらくしてからもう一度お試しください。'}`);
-      
-      // Show additional help if it looks like an API key issue
-      if (error.message?.includes('API') || error.message?.includes('認証')) {
-        setMessage(prev => `${prev}\n\nDeepSeek APIキーの設定を確認してください。`);
-      }
+      console.error('Error submitting writing:', error);
+      setMessage(error.message || 'フィードバックの取得中にエラーが発生しました。');
+      refreshPoints();
     } finally {
       setIsSubmitting(false);
     }
@@ -372,153 +332,98 @@ export default function WritingPage() {
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const text = e.target.value;
-    
-    // Calculate word count (split by spaces and filter empty strings)
-    const words = text.trim().split(/\s+/).filter(word => word.length > 0);
-    
-    // Check if the word count exceeds 400 words
-    if (words.length <= 400) {
-      // Sanitize the input to prevent code injection
-      const sanitizedText = text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-      setUserContent(sanitizedText);
-      setWordCount(words.length);
-    }
+    setUserContent(text);
+    setWordCount(text.trim().split(/\s+/).filter(Boolean).length);
   };
 
   const resetWriting = () => {
     setIsTopicGenerated(false);
     setIsFeedbackReceived(false);
     setTopic('');
-    setWritingId('');
     setUserContent('');
     setFeedback('');
-    setScore(0);
+    setWritingId('');
+    setMessage('');
     setWordCount(0);
   };
 
   const renderContent = () => {
-    if (!isTopicGenerated) {
-      return null;
+    if (!userProfile) {
+      return <div className="text-center py-10">ユーザー情報を読み込み中...</div>;
     }
 
+    // Ensure userProfile.preferredTeacher is treated as JapaneseTeacherKey, default to 'taro'
+    const currentTeacherKey = (userProfile.preferredTeacher || 'taro') as JapaneseTeacherKey; 
+
     return (
-      <div className="space-y-6">
-        {userProfile && (
-          <TeacherMessage
-            teacher={userProfile.preferredTeacher}
-          />
-        )}
-        
-        <div className="bg-white shadow rounded-lg p-6">
-          <div className="mb-4">
-            <h2 className="text-lg font-medium text-gray-900 mb-2">トピック</h2>
-            <p className="text-gray-600">{topic}</p>
-          </div>
+      <>
+        <TeacherMessage teacher={currentTeacherKey} />
 
-          {!isFeedbackReceived ? (
-            <div className="mb-4">
-              <label htmlFor="content" className="block text-sm font-medium text-gray-700 mb-2">
-                英作文
-              </label>
-              <textarea
-                id="content"
-                rows={6}
-                value={userContent}
-                onChange={handleTextChange}
-                className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                placeholder="ここに英語で文章を書いてください..."
-                disabled={isFeedbackReceived}
-              />
-              <p className="mt-1 text-sm text-gray-500">
-                単語数: {wordCount}/400 words {wordCount < 5 && wordCount > 0 && '(最低5単語必要です)'}
-                {wordCount >= 400 && ' (最大単語数に達しました)'}
-              </p>
-              
-              {!isFeedbackReceived && (
-                <div className="flex justify-end mt-4">
-                  <button
-                    onClick={submitWriting}
-                    disabled={isSubmitting || wordCount < 5}
-                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-                  >
-                    {isSubmitting ? '送信中...' : 'フィードバックを受け取る'}
-                  </button>
-                </div>
-              )}
+        <div className="bg-white p-6 rounded-lg shadow mb-6">
+          <h2 className="text-lg font-semibold mb-4">トピック</h2>
+          {isGeneratingTopic ? (
+            <div className="flex items-center justify-center h-16">
+              <LoadingAnimation message="" />
+              <span className="ml-3 text-gray-600">トピックを生成中...</span>
             </div>
-          ) : null}
-
-          {isSubmitting && (
-            <div className="mt-8 flex flex-col items-center">
-              <div className="animate-pulse flex space-x-4 mb-4">
-                <div className="h-12 w-12 bg-blue-400 rounded-full animate-bounce"></div>
-                <div className="h-12 w-12 bg-blue-500 rounded-full animate-bounce delay-100"></div>
-                <div className="h-12 w-12 bg-blue-600 rounded-full animate-bounce delay-200"></div>
-              </div>
-              <p className="text-lg font-medium text-gray-700 mt-2">AIが文章を添削中です・・・</p>
-              <p className="text-sm text-gray-500 mt-1">少々お待ちください</p>
-            </div>
+          ) : isTopicGenerated ? (
+            <p className="text-gray-800 bg-gray-50 p-3 rounded">{topic}</p>
+          ) : (
+            <button
+              onClick={generateTopic}
+              disabled={isLoading || pointsLoading || !hasEnoughPoints() || isGeneratingTopic}
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
+            >
+              新しいトピックを生成 (消費ポイント: {POINT_CONSUMPTION.WRITING_ESSAY})
+            </button>
           )}
         </div>
-
-        {isFeedbackReceived && feedback && (
-          <div className="bg-white shadow rounded-lg p-6">
-            <div className="flex items-start space-x-4 mb-6">
-              <div className="flex-shrink-0 w-12 h-12 relative">
-                {userProfile && (
-                  <div className="absolute inset-0 rounded-full overflow-hidden">
-                    <Image
-                      src={teacherInfo[userProfile.preferredTeacher].image}
-                      alt={teacherInfo[userProfile.preferredTeacher].name}
-                      fill
-                      style={{ objectFit: 'cover' }}
-                    />
-                  </div>
-                )}
-              </div>
-              <div className="flex-1">
-                <h3 className="font-medium text-gray-900 mb-1">
-                  {userProfile && teacherInfo[userProfile.preferredTeacher].name}からのフィードバック
-                </h3>
-                <p className="text-sm text-gray-500">
-                  {new Date().toLocaleString('ja-JP')}
-                </p>
-              </div>
-            </div>
-
-            <div className="mb-4">
-              <h2 className="text-lg font-medium text-gray-900 mb-2">トピック</h2>
-              <p className="text-gray-600">{topic}</p>
-            </div>
-
-            <div className="mb-4">
-              <h2 className="text-lg font-medium text-gray-900 mb-2">あなたの回答</h2>
-              <p className="text-gray-600 whitespace-pre-line">{userContent}</p>
-            </div>
-
-            <div className="mb-4">
-              <h2 className="text-lg font-medium text-gray-900 mb-2">フィードバック</h2>
-              <div className="prose max-w-none whitespace-pre-line text-gray-600">
-                {feedback}
-              </div>
-            </div>
-            
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              <p className="text-gray-700">
-                スコア: <span className="font-medium">{score}</span>/100
-              </p>
-            </div>
-            <div className="mt-4 flex justify-end">
-              <button
-                onClick={resetWriting}
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                新しいトピックで書く
-              </button>
-            </div>
+        
+        {isTopicGenerated && (
+          <div className="bg-white p-6 rounded-lg shadow mb-6">
+            <h2 className="text-lg font-semibold mb-2">英作文</h2>
+            <textarea
+              value={userContent}
+              onChange={handleTextChange}
+              rows={10}
+              className="w-full p-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="ここに英文を入力してください..."
+              maxLength={2000}
+              disabled={isSubmitting}
+            />
+            <p className={`text-sm mt-1 ${wordCount > 400 ? 'text-red-500' : 'text-gray-500'}`}>
+              単語数: {wordCount} / 400 words
+            </p>
+            <button
+              onClick={submitWriting}
+              disabled={isSubmitting || !userContent.trim() || wordCount > 400}
+              className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 w-full sm:w-auto inline-flex items-center justify-center"
+            >
+              {isSubmitting ? (
+                <>
+                  <LoadingAnimation message="" />
+                  <span className="ml-2">フィードバックを生成中...</span>
+                </>
+              ) : (
+                'フィードバックを受け取る'
+              )}
+            </button>
           </div>
         )}
-      </div>
+
+        {isFeedbackReceived && (
+          <div className="bg-white p-6 rounded-lg shadow mb-6">
+            <h2 className="text-lg font-semibold mb-2">フィードバック</h2>
+            <div 
+              className="prose prose-sm max-w-none p-4 bg-gray-50 rounded border border-gray-200" 
+              dangerouslySetInnerHTML={{ __html: feedback.replace(/\n/g, '<br />') }}
+            />
+            <button onClick={resetWriting} className="mt-4 text-sm text-blue-600 hover:underline">
+              新しいトピックで練習する
+            </button>
+          </div>
+        )}
+      </>
     );
   };
 
@@ -572,7 +477,7 @@ export default function WritingPage() {
           <div className="bg-white shadow rounded-lg p-6 mb-6">
             {userProfile && (
               <TeacherMessage
-                teacher={userProfile.preferredTeacher}
+                teacher={userProfile.preferredTeacher as JapaneseTeacherKey} // Cast to Japanese type
               />
             )}
             <div className="text-sm text-gray-600 mb-4">
@@ -596,9 +501,16 @@ export default function WritingPage() {
               <button
                 onClick={generateTopic}
                 disabled={isGeneratingTopic || !hasEnoughPoints()}
-                className="inline-flex items-center px-6 py-3 border border-transparent text-lg font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-lg font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
               >
-                {isGeneratingTopic ? 'トピック生成中...' : 'トピックを生成する'}
+                {isGeneratingTopic ? (
+                  <>
+                    <LoadingAnimation message="" /> 
+                    <span className="ml-2">トピック生成中...</span>
+                  </>
+                ) : (
+                  'トピックを生成する'
+                )}
               </button>
             </div>
           </div>
@@ -626,16 +538,12 @@ export default function WritingPage() {
                 // Debug: Log each entry to see teacher info
                 console.log(`Entry ${entry._id} teacher:`, entry.preferredTeacher);
                 
-                // Use a variable to hold the teacher key with fallback
-                const teacherKey = entry.preferredTeacher || 'taro';
+                // Use a variable to hold the teacher key with fallback, cast to Japanese type
+                const teacherKey = (entry.preferredTeacher || 'taro') as JapaneseTeacherKey;
                 console.log('Using teacher key:', teacherKey, 'for entry', entry._id);
                 
-                // Make sure teacher exists in teacherInfo
-                if (!teacherInfo[teacherKey]) {
-                  console.warn(`Teacher ${teacherKey} not found, falling back to taro`);
-                }
-                
-                const teacher = teacherInfo[teacherKey] ? teacherKey : 'taro';
+                // Check if teacher exists in teacherInfo (now only Japanese), fallback to taro
+                const teacher = teacherInfo[teacherKey] ? teacherKey : 'taro'; 
                 
                 return (
                   <div key={entry._id} className="bg-white shadow rounded-lg p-6">
@@ -643,7 +551,8 @@ export default function WritingPage() {
                       <div className="flex-shrink-0 w-12 h-12 relative">
                         <div className="absolute inset-0 rounded-full overflow-hidden">
                           <Image
-                            src={teacherInfo[teacher].image}
+                            // Access image from the teacherInfo object
+                            src={teacherInfo[teacher].image} 
                             alt={teacherInfo[teacher].name}
                             fill
                             style={{ objectFit: 'cover' }}
@@ -652,7 +561,8 @@ export default function WritingPage() {
                       </div>
                       <div className="flex-1">
                         <h3 className="font-medium text-gray-900 mb-1">
-                          {teacherInfo[teacher].name}からのフィードバック
+                          {/* Access name from the teacherInfo object */}
+                          {teacherInfo[teacher].name}からのフィードバック 
                         </h3>
                         <p className="text-sm text-gray-500">
                           {new Date(entry.createdAt).toLocaleString('ja-JP')}
@@ -670,12 +580,6 @@ export default function WritingPage() {
                       <h3 className="font-medium text-gray-900 mb-2">フィードバック</h3>
                       <div className="prose max-w-none whitespace-pre-line text-gray-600 mb-4">
                         {entry.feedback}
-                      </div>
-                      
-                      <div className="mt-4 pt-4 border-t border-gray-200">
-                        <p className="text-gray-700">
-                          スコア: <span className="font-medium">{entry.score}</span>/100
-                        </p>
                       </div>
                     </div>
                   </div>
