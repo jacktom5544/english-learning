@@ -1,28 +1,9 @@
 ---
 description: 
 globs: 
-alwaysApply: false
----
----
-description: 
-globs: 
-alwaysApply: false
----
----
-description: 
-globs: 
-alwaysApply: false
----
----
-description: 
-globs: 
-alwaysApply: false
----
----
-description: 
-globs: 
 alwaysApply: true
 ---
+
 
 # Your rule content
 
@@ -48,6 +29,8 @@ Make Re-usable component as much as possible(Don't scatter similar codes everywh
 Don't edit content of .env.local
 
 -Important 
-The native MongoDB driver proved more stable than Mongoose in the Amplify serverless environment for the refactored routes. So, always use native MongoDB driver.
+The native MongoDB driver proved more stable than Mongoose in the Amplify serverless environment for the refactored routes. 
+So, always use native MongoDB driver.
+Don't change layout and design unless you are explicitly asked
 
 

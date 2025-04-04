@@ -1,11 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { connectToDB } from '@/lib/mongodb';
+// Remove Mongoose connectToDB import
+// import { connectToDB } from '@/lib/mongodb';
+// Import MongoDB client
+import getClient from '@/lib/db';
+// Keep both models temporarily for transition
 import Grammar from '@/models/Grammar';
 import User from '@/models/User';
+// Import MongoDB types
+import { ObjectId, WithId, Db } from 'mongodb';
+// Import interface from Grammar model
+import { GrammarDoc, IGrammar } from '@/models/Grammar';
 import deepseek from '@/lib/deepseek';
 import { POINT_CONSUMPTION } from '@/lib/pointSystem';
+import { IUser } from '@/models/User'; // Keep the IUser interface
+
+// Define user document type for MongoDB
+type UserDoc = WithId<any> & Partial<IUser>;
 
 // Common grammar mistakes to detect as fallback
 const COMMON_GRAMMAR_ERRORS = [
@@ -277,12 +289,28 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectToDB();
-    const grammarEntries = await Grammar.find({ userId: session.user.id })
+    // Get MongoDB client
+    const { db: _db } = await getClient();
+    const db = _db as Db;
+    
+    // Use native MongoDB driver to find grammar entries
+    const grammarCollection = db.collection<GrammarDoc>('grammars');
+    const userId = new ObjectId(session.user.id);
+    
+    const grammarEntries = await grammarCollection
+      .find({ userId })
       .sort({ createdAt: -1 })
-      .limit(10);
+      .limit(10)
+      .toArray();
+    
+    // Convert ObjectId to string for JSON serialization
+    const serializedEntries = grammarEntries.map(entry => ({
+      ...entry,
+      _id: entry._id?.toString(),
+      userId: entry.userId.toString()
+    }));
 
-    return NextResponse.json(grammarEntries);
+    return NextResponse.json(serializedEntries);
   } catch (error) {
     console.error('Error fetching grammar entries:', error);
     return NextResponse.json({ error: 'Failed to fetch grammar entries' }, { status: 500 });
@@ -298,38 +326,283 @@ export async function POST(req: NextRequest) {
 
     const data = await req.json();
     
-    await connectToDB();
+    // Get MongoDB client
+    const { db: _db } = await getClient();
+    const db = _db as Db;
+    
+    // Access collections
+    const usersCollection = db.collection<UserDoc>('users');
+    const grammarCollection = db.collection<GrammarDoc>('grammars');
+    
+    // Parse userId
+    const userId = new ObjectId(session.user.id);
     
     // Get user profile for English level and preferred teacher
-    const user = await User.findById(session.user.id);
+    const user = await usersCollection.findOne({ _id: userId });
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
     
     // Check if user has enough points
-    if (user.points < POINT_CONSUMPTION.GRAMMAR_CHECK) {
+    if ((user.points || 0) < POINT_CONSUMPTION.GRAMMAR_CHECK) {
       return NextResponse.json({ error: 'Not enough points' }, { status: 403 });
     }
     
-    // Create grammar entry
-    const grammarEntry = await Grammar.create({
-      userId: session.user.id,
+    // Create grammar entry with the MongoDB driver
+    const grammarEntry: GrammarDoc = {
+      userId,
       topics: data.topics,
-      essays: data.essays,
+      essay: data.essay, // Single essay instead of essays array
       grammaticalErrors: data.grammaticalErrors || [],
+      errorDetails: data.errorDetails || [],
       preferredTeacher: user.preferredTeacher || 'taro',
       conversation: data.conversation || [],
-    });
-
+      status: 'pending', // Initial status for async processing
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    const result = await grammarCollection.insertOne(grammarEntry);
+    
     // Deduct points
-    user.points -= POINT_CONSUMPTION.GRAMMAR_CHECK;
-    await user.save();
+    await usersCollection.updateOne(
+      { _id: userId },
+      { $inc: { points: -POINT_CONSUMPTION.GRAMMAR_CHECK } }
+    );
+    
+    // Start asynchronous processing for grammar analysis
+    if (grammarEntry.essay && grammarEntry.essay.trim().length > 0) {
+      // Mark as processing
+      await grammarCollection.updateOne(
+        { _id: result.insertedId },
+        { $set: { status: 'processing', updatedAt: new Date() } }
+      );
+      
+      // Process asynchronously
+      processGrammarAnalysisAsync(
+        result.insertedId.toString(),
+        grammarEntry.essay,
+        user.preferredTeacher || 'taro',
+        user.englishLevel || 'beginner'
+      ).catch(err => console.error('Error in async grammar analysis:', err));
+    }
 
-    return NextResponse.json(grammarEntry);
+    // Return the created entry with string ID
+    return NextResponse.json({
+      ...grammarEntry,
+      _id: result.insertedId.toString(),
+      userId: userId.toString()
+    });
   } catch (error) {
     console.error('Error creating grammar entry:', error);
     return NextResponse.json({ error: 'Failed to create grammar entry' }, { status: 500 });
   }
+}
+
+// Fix error in processGrammarAnalysisAsync function for errorDetails type
+async function processGrammarAnalysisAsync(
+  grammarEntryId: string,
+  essay: string,
+  preferredTeacher: string,
+  englishLevel: string
+) {
+  try {
+    console.log(`Starting async grammar analysis for entry: ${grammarEntryId}`);
+    
+    // Get MongoDB client
+    const { db: _db } = await getClient();
+    const db = _db as Db;
+    const grammarCollection = db.collection<GrammarDoc>('grammars');
+    
+    // Analyze grammar using Deepseek
+    console.log("Starting Deepseek API call...");
+    const response = await deepseek.chat.completions.create({
+      model: 'deepseek-chat',
+      messages: [
+        { 
+          role: 'system', 
+          content: `You are an English grammar teacher with expertise in identifying grammatical errors in student essays.
+                  Analyze the following essay written by an English learner and identify ALL grammatical errors.
+                  
+                  Be very thorough and identify common ESL mistakes such as:
+                  - Subject-verb agreement issues (e.g., "He go" instead of "He goes")
+                  - Article usage (missing "a", "an", "the" or using them incorrectly)
+                  - Verb tense errors (using present when past is needed, etc.)
+                  - Preposition errors (e.g., "arrive to" instead of "arrive at")
+                  - Plural/singular noun mistakes (e.g., "two apple" instead of "two apples")
+                  - Word order errors (e.g., "blue big house" instead of "big blue house")
+                  - Fragment or run-on sentences
+                  - Pronoun errors
+                  - Irregular verb form errors
+                  
+                  For EACH error:
+                  1. Note the exact text that is incorrect
+                  2. Specify its start and end position (character index)
+                  3. Categorize the error type in Japanese (e.g., 時制の間違い、冠詞の間違い)
+                  4. Provide a clear explanation in Japanese of why it's incorrect and how to fix it
+                  
+                  Example of how to mark an error:
+                  For the sentence "I go to school yesterday", the error would be:
+                  {
+                    "type": "時制の間違い",
+                    "text": "go",
+                    "startPos": 2,
+                    "endPos": 4,
+                    "explanation": "過去の出来事なのでwentを使います"
+                  }
+                  
+                  Return a valid JSON object with the following format:
+                  {
+                    "errorCategories": [
+                      {"category": "時制の間違い", "count": 3},
+                      {"category": "冠詞の間違い", "count": 2}
+                    ],
+                    "errors": [
+                      {
+                        "type": "時制の間違い",
+                        "text": "go",
+                        "startPos": 2,
+                        "endPos": 4,
+                        "explanation": "過去の出来事なのでwentを使います"
+                      },
+                      {
+                        "type": "冠詞の間違い",
+                        "text": "school",
+                        "startPos": 9,
+                        "endPos": 15,
+                        "explanation": "特定の学校を指す場合は定冠詞'the'が必要です"
+                      }
+                    ],
+                    "feedback": "Your detailed feedback here"
+                  }
+                  
+                  Be precise with the character positions. The startPos is the index of the first character of the error, and endPos is the index of the last character plus one.
+                  Make absolutely sure you don't miss any errors. Even a simple missing article or incorrect preposition should be identified.
+                  IMPORTANT: Always search for errors even if the essay appears to be correct at first glance.` 
+        },
+        { role: 'user', content: `Essay to analyze: ${essay}` }
+      ],
+      temperature: 0.2,
+      max_tokens: 3000
+    });
+
+    const analysisContent = response.choices[0].message.content || '{}';
+    console.log("Raw response content received");
+    
+    // Extract and parse JSON
+    const extractedContent = extractJsonFromMarkdown(analysisContent);
+    console.log("Attempting to parse content");
+    const analysisResult = JSON.parse(extractedContent);
+    
+    // Fix error positions and create properly structured errorDetails
+    const fixedErrors = fixErrorPositions(analysisResult.errors || [], essay);
+    
+    // Update grammar entry with analysis results
+    await grammarCollection.updateOne(
+      { _id: new ObjectId(grammarEntryId) },
+      { 
+        $set: { 
+          grammaticalErrors: analysisResult.errorCategories || [],
+          errorDetails: [{ errors: fixedErrors }],
+          status: 'completed',
+          updatedAt: new Date()
+        } 
+      }
+    );
+    
+    console.log(`Completed grammar analysis for entry: ${grammarEntryId}`);
+  } catch (error) {
+    console.error(`Error in async grammar analysis for entry ${grammarEntryId}:`, error);
+    
+    // Get MongoDB client to update status to failed
+    try {
+      const { db: _db } = await getClient();
+      const db = _db as Db;
+      const grammarCollection = db.collection<GrammarDoc>('grammars');
+      
+      await grammarCollection.updateOne(
+        { _id: new ObjectId(grammarEntryId) },
+        { 
+          $set: { 
+            status: 'failed', 
+            updatedAt: new Date()
+          } 
+        }
+      );
+    } catch (updateError) {
+      console.error(`Failed to update grammar entry status: ${updateError}`);
+    }
+  }
+}
+
+// Helper functions for JSON parsing and error position fixing
+function extractJsonFromMarkdown(content: string) {
+  // Check if content has markdown code blocks
+  if (content.includes('```json')) {
+    const jsonBlockMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
+    if (jsonBlockMatch && jsonBlockMatch[1]) {
+      console.log("Found JSON code block in markdown response");
+      return jsonBlockMatch[1].trim();
+    }
+  }
+  
+  // If no code block found, try to find a JSON object directly
+  const jsonMatch = content.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    console.log("Found JSON object in content");
+    return jsonMatch[0];
+  }
+  
+  console.log("No JSON found in content");
+  return content;
+}
+
+// Fix error positions by finding actual text occurrences
+function fixErrorPositions(errors: any[], essay: string) {
+  if (!errors || !Array.isArray(errors)) return [];
+  
+  console.log("Fixing error positions...");
+  
+  return errors.map(error => {
+    // Skip if missing required fields
+    if (!error.text || !error.type) return error;
+    
+    // Find the actual occurrence of the text in the essay
+    const textToFind = error.text.trim();
+    
+    if (textToFind.length > 0) {
+      // Try to find an exact match
+      const index = essay.indexOf(textToFind);
+      
+      if (index !== -1) {
+        // Found a match, update positions
+        console.log(`Found match for "${textToFind}" at position ${index}`);
+        return {
+          ...error,
+          startPos: index,
+          endPos: index + textToFind.length
+        };
+      } else {
+        // Try case-insensitive search
+        const lowerEssay = essay.toLowerCase();
+        const lowerText = textToFind.toLowerCase();
+        const insensitiveIndex = lowerEssay.indexOf(lowerText);
+        
+        if (insensitiveIndex !== -1) {
+          console.log(`Found case-insensitive match for "${textToFind}" at position ${insensitiveIndex}`);
+          return {
+            ...error,
+            startPos: insensitiveIndex,
+            endPos: insensitiveIndex + textToFind.length
+          };
+        }
+      }
+    }
+    
+    // No match found, keep original positions but mark for logging
+    console.log(`No match found for error text: "${textToFind}"`);
+    return error;
+  });
 }
 
 // API for generating random topics
@@ -343,19 +616,24 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await connectToDB();
+    // Get MongoDB client
+    const { db: _db } = await getClient();
+    const db = _db as Db;
+    const usersCollection = db.collection<UserDoc>('users');
+    const userId = new ObjectId(session.user.id);
+    
     console.log("Connected to database");
     
     // Get user profile for English level
-    const user = await User.findById(session.user.id);
+    const user = await usersCollection.findOne({ _id: userId });
     if (!user) {
       console.log("User not found:", session.user.id);
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
-    console.log("User found:", "[email redacted]");
+    console.log("User found");
     
     // Check if user has enough points
-    if (user.points < POINT_CONSUMPTION.GRAMMAR_TOPIC_GENERATION) {
+    if ((user.points || 0) < POINT_CONSUMPTION.GRAMMAR_TOPIC_GENERATION) {
       console.log("Not enough points:", user.points, "needed:", POINT_CONSUMPTION.GRAMMAR_TOPIC_GENERATION);
       return NextResponse.json({ error: 'Not enough points' }, { status: 403 });
     }
@@ -365,11 +643,7 @@ export async function PUT(req: NextRequest) {
     const englishLevel = user.englishLevel || 'beginner';
     const job = user.job || '';
     const goal = user.goal || '';
-    console.log("User profile data:", { 
-      englishLevel: englishLevel || "[redacted]", 
-      job: "[redacted]", 
-      goal: "[redacted]" 
-    });
+    console.log("User profile data retrieved for topic generation");
 
     let systemPrompt = `Generate 3 random, unique essay topics for ${englishLevel} English learners`;
     if (job) systemPrompt += ` who work as ${job}`;
@@ -456,10 +730,12 @@ export async function PUT(req: NextRequest) {
     console.log("Final topics:", topics);
     console.log("Model used:", modelUsed);
     
-    // Deduct points
-    user.points -= POINT_CONSUMPTION.GRAMMAR_TOPIC_GENERATION;
-    await user.save();
-    console.log("Points deducted and user saved");
+    // Deduct points using MongoDB driver
+    await usersCollection.updateOne(
+      { _id: userId },
+      { $inc: { points: -POINT_CONSUMPTION.GRAMMAR_TOPIC_GENERATION } }
+    );
+    console.log("Points deducted");
 
     return NextResponse.json({ topics, modelUsed });
   } catch (error) {
@@ -565,7 +841,7 @@ function extractTopicsFromContent(content: string): string[] {
   return topics;
 }
 
-// API for analyzing the grammar
+// API for submitting a question - Update to use MongoDB
 export async function PATCH(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -573,397 +849,176 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { essays, grammarEntryId } = await req.json();
+    const { question, grammarEntryId } = await req.json();
     
-    await connectToDB();
+    // Get MongoDB client
+    const { db: _db } = await getClient();
+    const db = _db as Db;
+    const usersCollection = db.collection<UserDoc>('users');
+    const grammarCollection = db.collection<GrammarDoc>('grammars');
+    
+    // Parse user ID
+    const userId = new ObjectId(session.user.id);
     
     // Get user profile for preferred teacher
-    const user = await User.findById(session.user.id);
+    const user = await usersCollection.findOne({ _id: userId });
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
     
     // Check if user has enough points
-    if (user.points < POINT_CONSUMPTION.GRAMMAR_ANALYSIS) {
+    if ((user.points || 0) < POINT_CONSUMPTION.GRAMMAR_CHECK) {
       return NextResponse.json({ error: 'Not enough points' }, { status: 403 });
     }
 
     // Find the grammar entry
-    const grammarEntry = await Grammar.findById(grammarEntryId);
+    const grammarEntry = await grammarCollection.findOne({ _id: new ObjectId(grammarEntryId) });
     if (!grammarEntry) {
       return NextResponse.json({ error: 'Grammar entry not found' }, { status: 404 });
     }
 
-    console.log("About to call Deepseek API for grammar analysis");
-    console.log("Deepseek API Key configured:", !!process.env.DEEPSEEK_API_KEY);
-    console.log("Deepseek client initialized:", !!deepseek);
-    
-    // Analyze grammar using Deepseek
-    console.log("Starting Deepseek API call...");
-    let response;
-    try {
-      response = await deepseek.chat.completions.create({
-        model: 'deepseek-chat',
-        messages: [
-          { 
-            role: 'system', 
-            content: `You are an English grammar teacher with expertise in identifying grammatical errors in student essays.
-                    Analyze the following essays written by an English learner and identify ALL grammatical errors.
-                    
-                    Be very thorough and identify common ESL mistakes such as:
-                    - Subject-verb agreement issues (e.g., "He go" instead of "He goes")
-                    - Article usage (missing "a", "an", "the" or using them incorrectly)
-                    - Verb tense errors (using present when past is needed, etc.)
-                    - Preposition errors (e.g., "arrive to" instead of "arrive at")
-                    - Plural/singular noun mistakes (e.g., "two apple" instead of "two apples")
-                    - Word order errors (e.g., "blue big house" instead of "big blue house")
-                    - Fragment or run-on sentences
-                    - Pronoun errors
-                    - Irregular verb form errors
-                    
-                    For EACH error:
-                    1. Note the exact text that is incorrect
-                    2. Specify its start and end position (character index)
-                    3. Categorize the error type in Japanese (e.g., 時制の間違い、冠詞の間違い)
-                    4. Provide a clear explanation in Japanese of why it's incorrect and how to fix it
-                    
-                    Example of how to mark an error:
-                    For the sentence "I go to school yesterday", the error would be:
-                    {
-                      "type": "時制の間違い",
-                      "text": "go",
-                      "startPos": 2,
-                      "endPos": 4,
-                      "explanation": "過去の出来事なのでwentを使います"
-                    }
-                    
-                    Return a valid JSON object with the following format:
-                    {
-                      "errorCategories": [
-                        {"category": "時制の間違い", "count": 3},
-                        {"category": "冠詞の間違い", "count": 2}
-                      ],
-                      "errors": [
-                        {
-                          "essayIndex": 0,
-                          "errors": [
-                            {
-                              "type": "時制の間違い",
-                              "text": "go",
-                              "startPos": 2,
-                              "endPos": 4,
-                              "explanation": "過去の出来事なのでwentを使います"
-                            },
-                            {
-                              "type": "冠詞の間違い",
-                              "text": "school",
-                              "startPos": 9,
-                              "endPos": 15,
-                              "explanation": "特定の学校を指す場合は定冠詞'the'が必要です"
-                            }
-                          ]
-                        }
-                      ],
-                      "feedback": "Your detailed feedback here"
-                    }
-                    
-                    Be precise with the character positions. The startPos is the index of the first character of the error, and endPos is the index of the last character plus one.
-                    Make absolutely sure you don't miss any errors. Even a simple missing article or incorrect preposition should be identified.
-                    IMPORTANT: Always search for errors even if the essay appears to be correct at first glance.` 
-          },
-          { role: 'user', content: `Essays to analyze: ${JSON.stringify(essays)}` }
-        ],
-        temperature: 0.2,
-        max_tokens: 3000
-      });
-      console.log("Deepseek API call successful!");
-    } catch (apiError: any) {
-      console.error("Error calling Deepseek API:", apiError);
-      throw new Error(`Deepseek API error: ${apiError.message || 'Unknown error'}`);
-    }
+    // Add user question to conversation
+    const conversation = grammarEntry.conversation || [];
+    conversation.push({
+      sender: 'user',
+      content: question,
+      timestamp: new Date()
+    });
 
-    const analysisContent = response.choices[0].message.content || '{}';
-    console.log("Raw response content received");
+    // Update grammar entry with user question
+    await grammarCollection.updateOne(
+      { _id: new ObjectId(grammarEntryId) },
+      { 
+        $set: { 
+          conversation, 
+          updatedAt: new Date()
+        } 
+      }
+    );
+
+    // Generate AI response asynchronously
+    generateTeacherResponseAsync(
+      grammarEntryId,
+      question,
+      grammarEntry.essay,
+      grammarEntry.preferredTeacher,
+      user.englishLevel || 'beginner'
+    ).catch(err => console.error('Error generating teacher response:', err));
+
+    // Deduct points
+    await usersCollection.updateOne(
+      { _id: userId },
+      { $inc: { points: -POINT_CONSUMPTION.GRAMMAR_CHECK } }
+    );
+
+    return NextResponse.json({ success: true, conversation });
+  } catch (error) {
+    console.error('Error submitting question:', error);
+    return NextResponse.json({ error: 'Failed to submit question' }, { status: 500 });
+  }
+}
+
+// Asynchronous function to generate teacher response
+async function generateTeacherResponseAsync(
+  grammarEntryId: string,
+  question: string,
+  essay: string,
+  preferredTeacher: string,
+  englishLevel: string
+) {
+  try {
+    console.log(`Generating teacher response for entry: ${grammarEntryId}`);
     
-    let analysisResult;
+    // Get MongoDB client
+    const { db: _db } = await getClient();
+    const db = _db as Db;
+    const grammarCollection = db.collection<GrammarDoc>('grammars');
     
-    // Fix error positions by finding actual text occurrences
-    function fixErrorPositions(errors: any[], essays: string[]) {
-      if (!errors || !Array.isArray(errors)) return errors;
-      
-      console.log("Fixing error positions...");
-      
-      return errors.map(essayErrors => {
-        if (!essayErrors.errors || !Array.isArray(essayErrors.errors) || essayErrors.essayIndex === undefined) {
-          return essayErrors;
-        }
-        
-        const essayIndex = essayErrors.essayIndex;
-        const essay = essays[essayIndex];
-        
-        if (!essay) return essayErrors;
-        
-        const fixedErrors = essayErrors.errors.map((error: {
-          type: string;
-          text: string;
-          startPos: number;
-          endPos: number;
-          explanation: string;
-        }) => {
-          // Skip if missing required fields
-          if (!error.text || !error.type) return error;
-          
-          // Find the actual occurrence of the text in the essay
-          const textToFind = error.text.trim();
-          
-          if (textToFind.length > 0) {
-            // Try to find an exact match
-            const index = essay.indexOf(textToFind);
-            
-            if (index !== -1) {
-              // Found a match, update positions
-              console.log(`Found match for "${textToFind}" at position ${index}`);
-              return {
-                ...error,
-                startPos: index,
-                endPos: index + textToFind.length
-              };
-            } else {
-              // Try case-insensitive search
-              const lowerEssay = essay.toLowerCase();
-              const lowerText = textToFind.toLowerCase();
-              const insensitiveIndex = lowerEssay.indexOf(lowerText);
-              
-              if (insensitiveIndex !== -1) {
-                console.log(`Found case-insensitive match for "${textToFind}" at position ${insensitiveIndex}`);
-                return {
-                  ...error,
-                  startPos: insensitiveIndex,
-                  endPos: insensitiveIndex + textToFind.length
-                };
-              }
-            }
-          }
-          
-          // No match found, keep original positions but mark for logging
-          console.log(`No match found for error text: "${textToFind}"`);
-          return error;
-        });
-        
-        return {
-          ...essayErrors,
-          errors: fixedErrors
-        };
-      });
+    // Get the grammar entry to get conversation history
+    const grammarEntry = await grammarCollection.findOne({ _id: new ObjectId(grammarEntryId) });
+    if (!grammarEntry) {
+      throw new Error('Grammar entry not found');
     }
     
-    // Extract JSON content from markdown if needed
-    const extractJsonFromMarkdown = (content: string) => {
-      // Check if content has markdown code blocks
-      if (content.includes('```json')) {
-        const jsonBlockMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
-        if (jsonBlockMatch && jsonBlockMatch[1]) {
-          console.log("Found JSON code block in markdown response");
-          return jsonBlockMatch[1].trim();
-        }
-      }
-      
-      // If no code block found, try to find a JSON object directly
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        console.log("Found JSON object in content");
-        return jsonMatch[0];
-      }
-      
-      console.log("No JSON found in content");
-      return content;
-    };
+    // Prepare conversation history
+    const conversation = grammarEntry.conversation || [];
+    const conversationHistory = conversation
+      .map(msg => ({
+        role: msg.sender === 'user' ? 'user' : 'assistant',
+        content: msg.content
+      }));
+
+    // Create teacher prompt
+    const teacherPersonality = getTeacherPersonality(preferredTeacher);
     
-    try {
-      // Extract and parse the JSON
-      const extractedContent = extractJsonFromMarkdown(analysisContent);
-      console.log("Attempting to parse content");
-      analysisResult = JSON.parse(extractedContent);
-      
-      // Log the analysis result for debugging
-      console.log("Successfully parsed analysis result");
-      console.log("Error categories:", analysisResult.errorCategories?.length || 0);
-      console.log("Errors structure found:", !!analysisResult.errors);
-      
-      // Validate the result structure
-      if (!analysisResult.errorCategories) {
-        console.log("No error categories found, initializing empty array");
-        analysisResult.errorCategories = [];
-      }
-      
-      if (!analysisResult.errors) {
-        console.log("No errors array found, creating default structure");
-        analysisResult.errors = essays.map((essay: string, index: number) => ({
-          essayIndex: index,
-          errors: []
-        }));
-      }
-      
-      // Fix error positions
-      if (analysisResult.errors && Array.isArray(analysisResult.errors)) {
-        analysisResult.errors = fixErrorPositions(analysisResult.errors, essays);
-      }
-      
-      // Check if the errors array is complete
-      if (analysisResult.errors.length < essays.length) {
-        console.log(`Errors array incomplete (${analysisResult.errors.length}/${essays.length}), filling missing entries`);
-        // Fill in missing essay entries
-        for (let i = analysisResult.errors.length; i < essays.length; i++) {
-          analysisResult.errors.push({
-            essayIndex: i,
-            errors: []
-          });
-        }
-      }
-      
-      // Check if any error entry is missing the errors array
-      for (let i = 0; i < analysisResult.errors.length; i++) {
-        if (!analysisResult.errors[i].errors || !Array.isArray(analysisResult.errors[i].errors)) {
-          console.log(`Essay ${i} is missing errors array, initializing empty array`);
-          analysisResult.errors[i].errors = [];
-        }
-        
-        // Validate each error has the required fields
-        analysisResult.errors[i].errors = (analysisResult.errors[i].errors || []).filter((error: any) => {
-          if (!error.type || !error.text || typeof error.startPos !== 'number' || typeof error.endPos !== 'number') {
-            console.log(`Removing invalid error in essay ${i}:`, error);
-            return false;
-          }
-          return true;
-        });
-      }
-    } catch (parseError) {
-      console.error("Failed to parse JSON from Deepseek:", parseError);
-      console.log("Full raw content logging skipped for privacy");
-      
-      // Create a fallback analysis result
-      analysisResult = {
-        errorCategories: [],
-        errors: essays.map((essay: string, index: number) => ({
-          essayIndex: index,
-          errors: []
-        })),
-        feedback: "Sorry, there was an error processing your essays."
-      };
-      
-      // Try to extract JSON from the content if possible
-      const jsonMatch = analysisContent.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          const extractedJson = jsonMatch[0];
-          console.log("Attempting to parse extracted JSON");
-          analysisResult = JSON.parse(extractedJson);
-          console.log("Successfully parsed extracted JSON");
-          
-          // Fix error positions for extracted JSON too
-          if (analysisResult.errors && Array.isArray(analysisResult.errors)) {
-            analysisResult.errors = fixErrorPositions(analysisResult.errors, essays);
-          }
-        } catch (e) {
-          console.error("Failed to extract JSON from content");
-        }
-      }
-    }
-    
-    // Check if we got meaningful error detection results
-    const totalErrorsFound = analysisResult.errors.reduce((count: number, essay: any) => 
-      count + (essay.errors?.length || 0), 0);
-    
-    // If no errors found but essays are substantial, try fallback detection
-    if (totalErrorsFound === 0 && essays.some((essay: string) => essay.length > 50)) {
-      console.log("No errors detected by Deepseek, trying fallback detection");
-      
-      // Apply fallback error detection
-      const allErrorCategories: { category: string, count: number }[] = [];
-      const fallbackResults = essays.map((essay: string, index: number) => {
-        const result = detectErrorsInEssay(essay);
-        
-        // Aggregate error categories
-        result.categories.forEach((cat: { category: string, count: number }) => {
-          const existing = allErrorCategories.find(c => c.category === cat.category);
-          if (existing) {
-            existing.count += cat.count;
-          } else {
-            allErrorCategories.push({...cat});
-          }
-        });
-        
-        return {
-          essayIndex: index,
-          errors: result.errors
-        };
-      });
-      
-      // If we found errors with the fallback, use those results
-      const fallbackErrorsFound = fallbackResults.reduce((count: number, essay: any) => 
-        count + (essay.errors?.length || 0), 0);
-      
-      if (fallbackErrorsFound > 0) {
-        console.log(`Found ${fallbackErrorsFound} errors using fallback detection`);
-        analysisResult.errors = fallbackResults;
-        analysisResult.errorCategories = allErrorCategories;
-      }
-    }
-    
-    // Update grammar entry
-    grammarEntry.essays = essays;
-    grammarEntry.grammaticalErrors = analysisResult.errorCategories || [];
-    grammarEntry.errorDetails = analysisResult.errors;
-    
-    // Add teacher feedback based on preferred teacher
-    const teacherResponse = await deepseek.chat.completions.create({
+    // Generate response using Deepseek
+    const response = await deepseek.chat.completions.create({
       model: 'deepseek-chat',
       messages: [
-        { 
-          role: 'system', 
-          content: `You are an English teacher named ${user.preferredTeacher || 'taro'}. 
-                   Based on the grammatical errors identified (${JSON.stringify(analysisResult.errorCategories)}),
-                   explain these grammar concepts to the student.
-                   
-                   Teacher personalities:
-                   - taro: Polite, formal Japanese teacher who uses です/ます style
-                   - hiroshi: Casual Kansai dialect teacher who uses だ/や style
-                   - reiko: Very polite, formal female teacher who uses です/ます and わ/わよ endings
-                   - iwao: Rough, direct teacher who uses command form and masculine speech
-                   
-                   Use the appropriate speaking style for the character.
-                   
-                   IMPORTANT: Do NOT start with any introduction asking the student to write essays or mentioning that you want to know their grammar mistake tendencies. Start directly with your grammar analysis and feedback.` 
+        {
+          role: 'system',
+          content: `あなたは英語教師${teacherPersonality}です。日本人の英語学習者に英文法を教えています。
+                    以下の英作文とそれに関する学習者の質問に答えてください。
+                    
+                    学習者のレベル: ${englishLevel}
+                    
+                    英作文:
+                    """
+                    ${essay}
+                    """
+                    
+                    質問履歴と回答履歴:
+                    ${conversationHistory.map(msg => 
+                      `${msg.role === 'user' ? '学習者' : '先生'}: ${msg.content}`
+                    ).join('\n')}
+                    
+                    最新の質問に日本語で答えてください。必要に応じて英語の例文を追加しても構いません。
+                    回答は学習者の質問に直接関連するものにしてください。`
         },
-        { 
-          role: 'user', 
-          content: `Provide grammar explanations for these error types: ${JSON.stringify(analysisResult.errorCategories)}` 
-        }
+        { role: 'user', content: question }
       ],
       temperature: 0.7,
-      max_tokens: 1000
+      max_tokens: 1500
     });
 
-    // Add the teacher's explanation to the conversation
-    grammarEntry.conversation.push({
+    // Get teacher response
+    const teacherResponse = response.choices[0].message.content || '申し訳ありません。回答を生成できませんでした。';
+    
+    // Add teacher response to conversation
+    conversation.push({
       sender: 'teacher',
-      content: teacherResponse.choices[0].message.content || '',
-      timestamp: new Date(),
+      content: teacherResponse,
+      timestamp: new Date()
     });
     
-    await grammarEntry.save();
+    // Update grammar entry with teacher response
+    await grammarCollection.updateOne(
+      { _id: new ObjectId(grammarEntryId) },
+      { 
+        $set: { 
+          conversation, 
+          updatedAt: new Date()
+        } 
+      }
+    );
     
-    // Deduct points
-    user.points -= POINT_CONSUMPTION.GRAMMAR_ANALYSIS;
-    await user.save();
-
-    return NextResponse.json({
-      analysis: analysisResult,
-      teacherFeedback: teacherResponse.choices[0].message.content,
-      grammarEntry
-    });
+    console.log(`Teacher response generated for entry: ${grammarEntryId}`);
   } catch (error) {
-    console.error('Error analyzing grammar:', error);
-    return NextResponse.json({ error: 'Failed to analyze grammar' }, { status: 500 });
+    console.error(`Error generating teacher response for entry ${grammarEntryId}:`, error);
+  }
+}
+
+// Helper function to get teacher personality
+function getTeacherPersonality(teacher: string): string {
+  switch (teacher) {
+    case 'hiroshi':
+      return '・ひろし先生。関西弁で話し、親しみやすく、文法を分かりやすく教える。「〜やで」「〜やね」などの関西弁フレーズを使う';
+    case 'reiko':
+      return '・玲子先生。女性的で丁寧な言葉遣い。「〜ですわ」「〜ますわ」などの話し方をする、おっとりとした優しい先生';
+    case 'iwao':
+      return '・巌男先生。やや厳しい口調だが熱心に教える。「〜だ」「〜だろう」などの男性的表現を使う';
+    case 'taro':
+    default:
+      return '・太郎先生。標準的な丁寧語で話す。「〜です」「〜ます」を使い、分かりやすく教える一般的な先生';
   }
 } 

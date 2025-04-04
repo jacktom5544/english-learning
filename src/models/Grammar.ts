@@ -1,15 +1,16 @@
 import mongoose, { Schema, model, models } from 'mongoose';
+import { ObjectId } from 'mongodb';
 
-export interface IGrammar extends mongoose.Document {
-  userId: mongoose.Types.ObjectId;
+// Keeping the interface for type reference
+export interface IGrammar {
+  userId: string | ObjectId;
   topics: string[];
-  essays: string[];
+  essay: string; // Changed from essays array to single essay
   grammaticalErrors: {
     category: string;
     count: number;
   }[];
   errorDetails: {
-    essayIndex: number;
     errors: {
       type: string;
       text: string;
@@ -24,10 +25,42 @@ export interface IGrammar extends mongoose.Document {
     content: string;
     timestamp: Date;
   }[];
+  status: 'pending' | 'processing' | 'completed' | 'failed'; // Add status field for async processing
   createdAt: Date;
   updatedAt: Date;
 }
 
+// MongoDB document type for native driver
+export type GrammarDoc = {
+  _id?: ObjectId;
+  userId: ObjectId;
+  topics: string[];
+  essay: string; // Changed from essays array to single essay
+  grammaticalErrors: {
+    category: string;
+    count: number;
+  }[];
+  errorDetails: {
+    errors: {
+      type: string;
+      text: string;
+      startPos: number;
+      endPos: number;
+      explanation: string;
+    }[];
+  }[];
+  preferredTeacher: 'hiroshi' | 'reiko' | 'iwao' | 'taro';
+  conversation: {
+    sender: 'user' | 'teacher';
+    content: string;
+    timestamp: Date;
+  }[];
+  status: 'pending' | 'processing' | 'completed' | 'failed'; // Add status field for async processing
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+// Keep the Mongoose model for backward compatibility during transition
 const GrammarSchema = new Schema<IGrammar>(
   {
     userId: {
@@ -39,10 +72,10 @@ const GrammarSchema = new Schema<IGrammar>(
       type: String,
       required: true,
     }],
-    essays: [{
+    essay: { // Changed from essays array to single essay
       type: String,
       default: '',
-    }],
+    },
     grammaticalErrors: [{
       category: {
         type: String,
@@ -54,10 +87,6 @@ const GrammarSchema = new Schema<IGrammar>(
       }
     }],
     errorDetails: [{
-      essayIndex: {
-        type: Number,
-        required: true
-      },
       errors: [{
         type: {
           type: String,
@@ -101,6 +130,11 @@ const GrammarSchema = new Schema<IGrammar>(
         default: Date.now,
       },
     }],
+    status: {
+      type: String,
+      enum: ['pending', 'processing', 'completed', 'failed'],
+      default: 'pending',
+    },
   },
   {
     timestamps: true,

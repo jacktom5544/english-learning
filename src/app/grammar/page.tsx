@@ -11,9 +11,8 @@ import { EssayWithErrors } from './components';
 interface GrammarEntry {
   _id: string;
   topics: string[];
-  essays: string[];
+  essay: string;
   errorDetails?: {
-    essayIndex: number;
     errors: {
       type: string;
       text: string;
@@ -32,6 +31,7 @@ interface GrammarEntry {
     content: string;
     timestamp: string;
   }[];
+  status: 'pending' | 'processing' | 'completed' | 'failed';
   createdAt: string;
 }
 
@@ -46,22 +46,22 @@ const teacherInfo = {
   hiroshi: {
     name: 'ひろし先生',
     image: '/hiroshi.png',
-    introduction: '{nickname}はんの文法ミスの傾向を知りたいから以下の3つのトピックについて英文を書いてくれへん？出来るだけ長く書いてもらえるとより{nickname}はん向けの的確なアドバイスが出来るで！'
+    introduction: '{nickname}はんの文法ミスの傾向を知りたいから以下のトピックについて英文を書いてくれへん？出来るだけ長く書いてもらえるとより{nickname}はん向けの的確なアドバイスが出来るで！'
   },
   reiko: {
     name: '玲子先生',
     image: '/reiko.png',
-    introduction: '{nickname}さんの文法ミスの傾向を知りたいので以下の3つのトピックについて英文を書いて下さいまし。出来るだけ長く書いてもらえるとより{nickname}さん向けの的確なアドバイスが出来ますわ！'
+    introduction: '{nickname}さんの文法ミスの傾向を知りたいので以下のトピックについて英文を書いて下さいまし。出来るだけ長く書いてもらえるとより{nickname}さん向けの的確なアドバイスが出来ますわ！'
   },
   iwao: {
     name: '巌男先生',
     image: '/iwao.png',
-    introduction: 'お前の文法ミスの傾向を知りたいから以下の3つのトピックについて英文を書いてくれ。出来るだけ長く書けばお前にとって的確なアドバイスが出来るぞ。'
+    introduction: 'お前の文法ミスの傾向を知りたいから以下のトピックについて英文を書いてくれ。出来るだけ長く書けばお前にとって的確なアドバイスが出来るぞ。'
   },
   taro: {
     name: '太郎先生',
     image: '/taro.png',
-    introduction: '{nickname}さんの文法ミスの傾向を知りたいので以下の3つのトピックについて英文を書いて下さい。出来るだけ長く書いてもらえるとより{nickname}さんの文法ミスの傾向を深く知り的確なアドバイスが出来ます。'
+    introduction: '{nickname}さんの文法ミスの傾向を知りたいので以下のトピックについて英文を書いて下さい。出来るだけ長く書いてもらえるとより{nickname}さんの文法ミスの傾向を深く知り的確なアドバイスが出来ます。'
   }
 };
 
@@ -106,19 +106,21 @@ export default function GrammarPage() {
   const [topicsEnglish, setTopicsEnglish] = useState<string[]>([]);
   const [topicsJapanese, setTopicsJapanese] = useState<string[]>([]);
   const [showJapaneseTopics, setShowJapaneseTopics] = useState(false);
-  const [essays, setEssays] = useState<string[]>(['', '', '']);
+  const [essay, setEssay] = useState('');
   const [grammarEntryId, setGrammarEntryId] = useState('');
   const [grammaticalErrors, setGrammaticalErrors] = useState<{category: string, count: number}[]>([]);
   const [isTopicGenerated, setIsTopicGenerated] = useState(false);
-  const [isEssaysSubmitted, setIsEssaysSubmitted] = useState(false);
+  const [isEssaySubmitted, setIsEssaySubmitted] = useState(false);
   const [isAnalysisCompleted, setIsAnalysisCompleted] = useState(false);
   const [isGeneratingTopics, setIsGeneratingTopics] = useState(false);
   const [message, setMessage] = useState('');
   const [conversation, setConversation] = useState<{sender: 'user' | 'teacher', content: string, timestamp: string}[]>([]);
   const [userQuestion, setUserQuestion] = useState('');
   const [isAskingQuestion, setIsAskingQuestion] = useState(false);
-  const [wordCounts, setWordCounts] = useState<number[]>([0, 0, 0]);
+  const [wordCount, setWordCount] = useState(0);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [checkProgressInterval, setCheckProgressInterval] = useState<NodeJS.Timeout | null>(null);
   
   const conversationEndRef = useRef<HTMLDivElement>(null);
 
@@ -261,14 +263,56 @@ export default function GrammarPage() {
     setShowJapaneseTopics(!showJapaneseTopics);
   };
 
-  const submitEssays = async () => {
-    // Check word counts
-    const invalidEssays = wordCounts.map((count, index) => 
-      count < 20 || count > 1000 ? index : -1
-    ).filter(index => index !== -1);
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+    
+    if (isProcessing && grammarEntryId) {
+      intervalId = setInterval(async () => {
+        try {
+          const response = await fetch(`/api/grammar/${grammarEntryId}`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.status === 'completed') {
+              setIsProcessing(false);
+              setIsAnalysisCompleted(true);
+              setGrammaticalErrors(data.grammaticalErrors || []);
+              setAnalysisResult({
+                errors: data.errorDetails || []
+              });
+              // Add initial teacher message if conversation is empty
+              if (!data.conversation || data.conversation.length === 0) {
+                setConversation([{
+                  sender: 'teacher',
+                  content: "エッセイを分析しました。質問があればどうぞ。",
+                  timestamp: new Date().toISOString()
+                }]);
+              } else {
+                setConversation(data.conversation);
+              }
+              setMessage('エッセイの分析が完了しました');
+              if (intervalId) clearInterval(intervalId);
+            } else if (data.status === 'failed') {
+              setIsProcessing(false);
+              setMessage('エッセイの分析に失敗しました。もう一度お試しください。');
+              if (intervalId) clearInterval(intervalId);
+            }
+          }
+        } catch (error) {
+          console.error("Error checking grammar analysis status:", error);
+        }
+      }, 3000); // Check every 3 seconds
+      
+      setCheckProgressInterval(intervalId);
+    }
+    
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isProcessing, grammarEntryId]);
 
-    if (invalidEssays.length > 0) {
-      setMessage(`エッセイ ${invalidEssays.map(i => i + 1).join(', ')} は20単語以上、1000単語以下である必要があります。`);
+  const handleSubmitEssay = async () => {
+    if (!essay.trim()) {
+      setMessage('エッセイを入力してください。');
       return;
     }
 
@@ -278,95 +322,57 @@ export default function GrammarPage() {
     }
 
     setIsSubmitting(true);
-    setMessage('エッセイを分析中...');
+    setMessage('エッセイを送信中... 処理には数秒かかります');
     
-   
-
     try {
-      // First create a grammar entry
-      
-      const createResponse = await fetch('/api/grammar', {
+      // Create a new grammar entry
+      const response = await fetch('/api/grammar', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           topics,
-          essays,
+          essay,
           grammaticalErrors: [],
           conversation: []
         }),
       });
-
-      if (!createResponse.ok) {
-        const errorData = await createResponse.json().catch(() => ({}));
-        throw new Error(`Failed to create grammar entry: ${createResponse.status} ${createResponse.statusText}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to submit: ${response.status} ${response.statusText}`);
       }
-
-      const grammarEntry = await createResponse.json();
       
-      setGrammarEntryId(grammarEntry._id);
-
-      // Now analyze the essays
+      const data = await response.json();
+      setGrammarEntryId(data._id);
       
-      const analysisResponse = await fetch('/api/grammar', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          essays,
-          grammarEntryId: grammarEntry._id
-        }),
-      });
-
-      
-      
-      if (!analysisResponse.ok) {
-        const errorData = await analysisResponse.json().catch(() => ({}));
-        throw new Error(`Failed to analyze essays: ${analysisResponse.status} ${analysisResponse.statusText}`);
-      }
-
-      const analysisResult = await analysisResponse.json();
-      
-      
-      // Handle the different response structure from Deepseek
-      if (!analysisResult.analysis && analysisResult.errorCategories && analysisResult.errors) {
-        // Direct structure from Deepseek extraction
-        setGrammaticalErrors(analysisResult.errorCategories || []);
+      // Check the status and set up for progress tracking
+      if (data.status === 'pending' || data.status === 'processing') {
+        setIsProcessing(true);
+        setIsEssaySubmitted(true);
+        setMessage('エッセイを分析中... AIが処理しています');
+      } else if (data.status === 'completed') {
+        // If already completed, update state directly
+        setGrammaticalErrors(data.grammaticalErrors || []);
         setAnalysisResult({
-          analysis: {
-            errorCategories: analysisResult.errorCategories || [],
-            errors: analysisResult.errors || []
-          },
-          teacherFeedback: analysisResult.feedback || "エッセイを分析しました。"
+          errors: data.errorDetails || []
         });
-        
-        // Add teacher feedback to conversation
-        setConversation([{
+        setConversation(data.conversation || [{
           sender: 'teacher',
-          content: analysisResult.feedback || "エッセイを分析しました。",
+          content: "エッセイを分析しました。質問があればどうぞ。",
           timestamp: new Date().toISOString()
         }]);
-      } else if (analysisResult.analysis && analysisResult.teacherFeedback) {
-        // Original expected structure
-        setGrammaticalErrors(analysisResult.analysis.errorCategories || []);
-        setAnalysisResult(analysisResult);
-        setConversation([{
-          sender: 'teacher',
-          content: analysisResult.teacherFeedback,
-          timestamp: new Date().toISOString()
-        }]);
+        setIsEssaySubmitted(true);
+        setIsAnalysisCompleted(true);
+        setMessage('エッセイの分析が完了しました');
       } else {
-        throw new Error('Server returned invalid analysis format');
+        throw new Error('サーバーからのレスポンスが無効です');
       }
       
-      setIsEssaysSubmitted(true);
-      setIsAnalysisCompleted(true);
-      setMessage('エッセイの分析が完了しました');
       await refreshPoints();
     } catch (error: any) {
-      setMessage(`エッセイの分析に失敗しました。${error.message || 'しばらくしてからもう一度お試しください。'}`);
+      setMessage(`エッセイの送信に失敗しました。${error.message || 'しばらくしてからもう一度お試しください。'}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -400,14 +406,14 @@ export default function GrammarPage() {
       setUserQuestion('');
       
       // Send the question to the API
-      const response = await fetch(`/api/grammar/${grammarEntryId}/question`, {
-        method: 'POST',
+      const response = await fetch(`/api/grammar`, {
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           question: userQuestion,
-          conversation: updatedConversation
+          grammarEntryId
         }),
       });
 
@@ -418,15 +424,32 @@ export default function GrammarPage() {
 
       const data = await response.json();
       
-      // Add teacher's response to the conversation
-      setConversation([
-        ...updatedConversation,
-        {
-          sender: 'teacher' as 'user' | 'teacher',
-          content: data.response,
-          timestamp: new Date().toISOString()
+      // The conversation will be updated asynchronously by the server
+      setMessage('質問が送信されました。回答が生成されるのを待っています...');
+      
+      // Start polling for updates
+      const checkInterval = setInterval(async () => {
+        try {
+          const checkResponse = await fetch(`/api/grammar/${grammarEntryId}`);
+          if (checkResponse.ok) {
+            const checkData = await checkResponse.json();
+            
+            // Check if we have more messages than we currently have locally
+            if (checkData.conversation && checkData.conversation.length > updatedConversation.length) {
+              clearInterval(checkInterval);
+              setConversation(checkData.conversation);
+              setMessage('');
+            }
+          }
+        } catch (error) {
+          console.error("Error checking for conversation updates:", error);
         }
-      ]);
+      }, 2000);
+      
+      // Clear interval after 30 seconds as a fallback
+      setTimeout(() => {
+        if (checkInterval) clearInterval(checkInterval);
+      }, 30000);
       
       await refreshPoints();
     } catch (error: any) {
@@ -436,48 +459,25 @@ export default function GrammarPage() {
     }
   };
 
-  const handleEssayChange = (index: number, value: string) => {
-    const newEssays = [...essays];
-    newEssays[index] = value;
-    setEssays(newEssays);
+  const handleEssayChange = (value: string) => {
+    setEssay(value);
     
     // Update word count
     const wordCount = value.trim() ? value.trim().split(/\s+/).length : 0;
-    const newWordCounts = [...wordCounts];
-    newWordCounts[index] = wordCount;
-    setWordCounts(newWordCounts);
+    setWordCount(wordCount);
   };
 
   const resetExercise = () => {
     setTopics([]);
-    setEssays(['', '', '']);
-    setWordCounts([0, 0, 0]);
+    setEssay('');
+    setWordCount(0);
     setGrammaticalErrors([]);
     setConversation([]);
     setGrammarEntryId('');
     setIsTopicGenerated(false);
-    setIsEssaysSubmitted(false);
+    setIsEssaySubmitted(false);
     setIsAnalysisCompleted(false);
     setUserQuestion('');
-  };
-
-  // Function to filter out teacher introduction from feedback
-  const filterTeacherIntroduction = (content: string) => {
-    // Find the first paragraph break after any introduction text
-    const introPatterns = [
-      '文法ミスの傾向を知りたい',
-      '英文を書いて',
-      '出来るだけ長く書いて'
-    ];
-    
-    if (introPatterns.some(pattern => content.includes(pattern))) {
-      const paragraphBreak = content.indexOf('\n\n');
-      if (paragraphBreak !== -1) {
-        return content.substring(paragraphBreak + 2);
-      }
-    }
-    
-    return content;
   };
 
   if (isLoading || !userProfile) {
@@ -504,8 +504,8 @@ export default function GrammarPage() {
         </div>
       )}
       
-      {!isEssaysSubmitted && (
-        <TeacherMessage teacher={userProfile.preferredTeacher} nickname={userProfile.nickname} />
+      {!isEssaySubmitted && (
+        <TeacherMessage teacher={userProfile?.preferredTeacher || 'taro'} nickname={userProfile?.nickname || ''} />
       )}
       
       {!isTopicGenerated ? (
@@ -536,198 +536,167 @@ export default function GrammarPage() {
             </div>
           )}
         </div>
-      ) : !isEssaysSubmitted ? (
+      ) : !isEssaySubmitted ? (
         <div className="mb-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">トピック (3つの中から好きなものを選んで英作文を書いてください)</h2>
+          <div className="flex justify-between items-center mb-2">
+            <h2 className="text-xl font-semibold">トピック</h2>
             <button 
-              onClick={toggleTopicLanguage}
-              className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 rounded"
+              onClick={() => setShowJapaneseTopics(!showJapaneseTopics)}
+              className="text-sm px-2 py-1 bg-gray-200 hover:bg-gray-300 rounded"
             >
-              {showJapaneseTopics ? '英語で表示する' : '日本語で表示する'}
+              {showJapaneseTopics ? '英語で表示' : '日本語で表示'}
             </button>
           </div>
           
-          {topics.map((topic, index) => (
-            <div key={index} className="mb-6">
-              <div className="bg-white p-4 rounded-lg shadow mb-2">
-                <p className="font-medium">{index + 1}. {topic}</p>
-              </div>
-              
-              <div className="mb-1 flex justify-between">
-                <label htmlFor={`essay-${index}`} className="block text-sm font-medium text-gray-700">
-                  エッセイ {index + 1}
-                </label>
-                <span className={`text-sm ${wordCounts[index] < 20 ? 'text-red-500' : wordCounts[index] > 1000 ? 'text-red-500' : 'text-gray-500'}`}>
-                  {wordCounts[index]} / 1000 単語
-                </span>
-              </div>
-              
-              <textarea
-                id={`essay-${index}`}
-                value={essays[index]}
-                onChange={(e) => handleEssayChange(index, e.target.value)}
-                className="w-full h-40 p-2 border rounded-md"
-                placeholder={`このトピックについて英語で20単語以上、1000単語以内で書いてください`}
-              />
+          <div className="bg-white p-4 rounded-lg shadow mb-4">
+            <p className="text-lg mb-2 font-medium">{topics[0]}</p>
+          </div>
+          
+          <div className="mb-4">
+            <h3 className="text-lg font-medium mb-2">エッセイ</h3>
+            <div className="flex justify-between text-sm text-gray-500 mb-1">
+              <span>できるだけ詳しく書いてください (100-300単語程度)</span>
+              <span>{wordCount} 単語</span>
             </div>
-          ))}
+            <textarea
+              value={essay}
+              onChange={(e) => handleEssayChange(e.target.value)}
+              className="w-full h-64 p-3 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Write your essay here..."
+            ></textarea>
+          </div>
           
-          <button
-            onClick={submitEssays}
-            disabled={isSubmitting || !hasEnoughPoints('ANALYSIS')}
-            className={`px-4 py-2 rounded ${
-              hasEnoughPoints('ANALYSIS') ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-500'
-            } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            {isSubmitting ? '分析中...' : 'エッセイを提出して文法をチェック'}
-          </button>
-          <p className="text-xs text-gray-500 mt-1">
-            消費ポイント: {POINT_CONSUMPTION.GRAMMAR_ANALYSIS}
-          </p>
-          
-          {isSubmitting && (
-            <div className="mt-8 flex flex-col items-center">
+          <div className="flex justify-between">
+            <button
+              onClick={resetExercise}
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+            >
+              リセット
+            </button>
+            <div>
+              <button
+                onClick={handleSubmitEssay}
+                disabled={isSubmitting || !essay.trim() || !hasEnoughPoints('ANALYSIS')}
+                className={`px-4 py-2 rounded ${
+                  hasEnoughPoints('ANALYSIS') && essay.trim() ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-500'
+                } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {isSubmitting ? '送信中...' : 'エッセイを送信'}
+              </button>
+              <p className="text-xs text-gray-500 mt-1 text-right">
+                消費ポイント: {POINT_CONSUMPTION.GRAMMAR_CHECK}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div>
+          {isProcessing ? (
+            <div className="my-8 flex flex-col items-center">
               <div className="animate-pulse flex space-x-4 mb-4">
                 <div className="h-12 w-12 bg-blue-400 rounded-full animate-bounce"></div>
                 <div className="h-12 w-12 bg-blue-500 rounded-full animate-bounce delay-100"></div>
                 <div className="h-12 w-12 bg-blue-600 rounded-full animate-bounce delay-200"></div>
               </div>
-              <p className="text-lg font-medium text-gray-700 mt-2">AIが文法を解析中です・・・</p>
-              <p className="text-sm text-gray-500 mt-1">少々お待ちください</p>
+              <p className="text-lg font-medium text-gray-700 mt-2">AIがエッセイを分析中です・・・</p>
+              <p className="text-sm text-gray-500 mt-1">少々お待ちください（数秒～30秒程度）</p>
+              <p className="text-xs text-gray-400 mt-1">タイムアウトしても裏でAIが処理を継続しています。数分後に再度確認してください。</p>
             </div>
-          )}
-        </div>
-      ) : (
-        <div>
-          {grammaticalErrors.length > 0 && (
-            <div className="mb-6">
-              <h2 className="text-xl font-semibold mb-2">文法エラー分析</h2>
-              <div className="bg-white p-4 rounded-lg shadow">
-                <div className="flex flex-wrap gap-2">
-                  {grammaticalErrors.map((error, index) => (
-                    <div key={index} className="px-3 py-1 bg-red-50 text-red-700 rounded-full text-sm">
-                      {error.category} ({error.count})
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-          
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold mb-2">提出したエッセイ</h2>
-            {essays.map((essay, index) => (
-              <div key={index} className="mb-4 bg-white p-4 rounded-lg shadow">
-                <h3 className="font-medium mb-2">エッセイ {index + 1}: {topics[index]}</h3>
-                {(() => {
-                  const essayErrors = analysisResult?.analysis?.errors?.find(
-                    (e: {essayIndex: number, errors: any[]}) => e.essayIndex === index
-                  )?.errors || [];
-                  
-                  return analysisResult?.analysis?.errors ? (
-                    <EssayWithErrors 
-                      essay={essay} 
-                      errors={essayErrors} 
-                    />
-                  ) : (
-                    <div className="whitespace-pre-wrap bg-gray-50 p-3 rounded border border-gray-200">
-                      {essay}
-                    </div>
-                  );
-                })()}
-              </div>
-            ))}
-          </div>
-          
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold mb-2">先生の説明</h2>
-            <div className="bg-white rounded-lg shadow overflow-hidden">
-              <div className="h-80 overflow-y-auto p-4">
-                {conversation.filter((msg, idx) => 
-                  !(idx === 0 && msg.sender === 'teacher' && 
-                    (msg.content.includes('文法ミスの傾向を知りたい') || 
-                     msg.content.includes('英文を書いて下さい') ||
-                     msg.content.includes('英文を書いてくれへん') ||
-                     msg.content.includes('英文を書いてくれ')))
-                ).map((message, index) => (
-                  <div 
-                    key={index} 
-                    className={`mb-4 ${
-                      message.sender === 'teacher' ? 'bg-blue-50 p-3 rounded-lg' : 'bg-gray-50 p-3 rounded-lg'
-                    }`}
-                  >
-                    <div className="flex items-center mb-2">
-                      {message.sender === 'teacher' && (
-                        <div className="w-8 h-8 relative mr-2">
-                          <div className="absolute inset-0 rounded-full overflow-hidden">
-                            <Image
-                              src={teacherInfo[userProfile.preferredTeacher].image}
-                              alt={teacherInfo[userProfile.preferredTeacher].name}
-                              fill
-                              style={{ objectFit: 'cover' }}
-                            />
+          ) : (
+            <>
+              {isAnalysisCompleted && (
+                <div>
+                  <div className="mb-6">
+                    <h2 className="text-xl font-semibold mb-3">文法エラーの分析</h2>
+                    
+                    {grammaticalErrors.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                        {grammaticalErrors.map((error, index) => (
+                          <div key={index} className="bg-white p-4 rounded-lg shadow">
+                            <h3 className="font-medium text-lg">{error.category}</h3>
+                            <p className="text-gray-700">エラー回数: {error.count}</p>
                           </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="bg-green-50 p-4 rounded-lg mb-4">
+                        <p className="text-green-700">文法エラーが見つかりませんでした。素晴らしい！</p>
+                      </div>
+                    )}
+                    
+                    <div className="mb-6">
+                      <h3 className="text-lg font-medium mb-2">あなたのエッセイ</h3>
+                      <div className="bg-white p-4 rounded-lg shadow">
+                        {analysisResult && analysisResult.errors && analysisResult.errors.length > 0 ? (
+                          <EssayWithErrors 
+                            essay={essay} 
+                            errors={(analysisResult.errors[0]?.errors || [])}
+                          />
+                        ) : (
+                          <p className="whitespace-pre-wrap">{essay}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="mb-6">
+                    <h2 className="text-xl font-semibold mb-3">先生とのやり取り</h2>
+                    
+                    <div className="bg-white p-4 rounded-lg shadow mb-4">
+                      <div className="mb-4 max-h-96 overflow-y-auto">
+                        {conversation.map((msg, index) => (
+                          <div key={index} className={`mb-4 ${msg.sender === 'user' ? 'text-right' : ''}`}>
+                            <div className={`inline-block p-3 rounded-lg max-w-[80%] ${
+                              msg.sender === 'user' ? 'bg-blue-100 text-blue-900' : 'bg-gray-100 text-gray-900'
+                            }`}>
+                              <p className="whitespace-pre-wrap">{msg.content}</p>
+                            </div>
+                            <div className={`text-xs text-gray-500 mt-1 ${msg.sender === 'user' ? 'text-right' : ''}`}>
+                              {new Date(msg.timestamp).toLocaleString()}
+                            </div>
+                          </div>
+                        ))}
+                        <div ref={conversationEndRef} />
+                      </div>
+                      
+                      <div className="flex flex-col">
+                        <textarea
+                          value={userQuestion}
+                          onChange={(e) => setUserQuestion(e.target.value)}
+                          placeholder="先生に文法について質問する..."
+                          className="w-full p-3 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
+                          rows={3}
+                        ></textarea>
+                        <div className="self-end">
+                          <button
+                            onClick={askQuestion}
+                            disabled={isAskingQuestion || !userQuestion.trim() || !hasEnoughPoints('QUESTION')}
+                            className={`px-4 py-2 rounded ${
+                              hasEnoughPoints('QUESTION') && userQuestion.trim() ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-500'
+                            } ${isAskingQuestion ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            {isAskingQuestion ? '送信中...' : '質問する'}
+                          </button>
+                          <p className="text-xs text-gray-500 mt-1 text-right">
+                            消費ポイント: {POINT_CONSUMPTION.GRAMMAR_CHECK}
+                          </p>
                         </div>
-                      )}
-                      <span className="font-medium">
-                        {message.sender === 'teacher' ? teacherInfo[userProfile.preferredTeacher].name : userProfile.nickname}
-                      </span>
+                      </div>
                     </div>
-                    <p className="whitespace-pre-wrap">
-                      {message.sender === 'teacher' && index === 0 
-                        ? filterTeacherIntroduction(message.content) 
-                        : message.content}
-                    </p>
                   </div>
-                ))}
-                <div ref={conversationEndRef} />
-              </div>
-              
-              <div className="p-4 border-t">
-                <div className="flex">
-                  <input
-                    type="text"
-                    value={userQuestion}
-                    onChange={(e) => setUserQuestion(e.target.value)}
-                    disabled={isAskingQuestion}
-                    placeholder="文法について質問してみましょう..."
-                    className="flex-1 p-2 border rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <button
-                    onClick={askQuestion}
-                    disabled={isAskingQuestion || !userQuestion.trim() || !hasEnoughPoints('QUESTION')}
-                    className={`px-4 py-2 rounded-r-md ${
-                      hasEnoughPoints('QUESTION') ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-500'
-                    } ${isAskingQuestion ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    {isAskingQuestion ? '送信中...' : '質問する'}
-                  </button>
+                  
+                  <div className="flex justify-center">
+                    <button
+                      onClick={resetExercise}
+                      className="px-4 py-2 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                    >
+                      新しいエッセイを書く
+                    </button>
+                  </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  消費ポイント: {POINT_CONSUMPTION.GRAMMAR_CHECK}
-                </p>
-                
-                {isAskingQuestion && (
-                  <div className="mt-4 flex items-center justify-center">
-                    <div className="animate-pulse flex space-x-2">
-                      <div className="h-3 w-3 bg-blue-400 rounded-full animate-bounce"></div>
-                      <div className="h-3 w-3 bg-blue-500 rounded-full animate-bounce delay-100"></div>
-                      <div className="h-3 w-3 bg-blue-600 rounded-full animate-bounce delay-200"></div>
-                    </div>
-                    <span className="ml-2 text-sm text-gray-500">回答を作成中...</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-          
-          <button
-            onClick={resetExercise}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded"
-          >
-            新しい練習を始める
-          </button>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>
