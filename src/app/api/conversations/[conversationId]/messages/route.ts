@@ -5,23 +5,45 @@ import { getServerSession } from 'next-auth';
 // import User from '@/models/User'; // Remove unless needed by AI funcs
 import {
   generateTeacherResponse,
-  hasGrammarErrors,
-  correctGrammar
+  // hasGrammarErrors, // Removed import
+  correctGrammar,
+  GrammarCorrectionResult // Import the result type
 } from '@/lib/conversation-ai';
 import { consumePoints } from '@/lib/serverUtils';
 import { POINT_CONSUMPTION } from '@/lib/pointSystem';
 import getClient from '@/lib/db'; // Use default export
-import { ObjectId } from 'mongodb'; // Import ObjectId
+import { ObjectId, WithId, Db } from 'mongodb'; // Import ObjectId and WithId for userDoc type
 import { authOptions } from '@/lib/auth'; // Import authOptions
+import { IUser } from '@/models/User'; // Import IUser for user object structure
+// Import TeacherType if needed for ConversationDoc, assuming it's in teachers.ts
+import { TeacherType } from '@/lib/teachers'; 
 
-// Define interfaces for message structure (optional but good practice)
+// Define interfaces for message structure
 interface Message {
-    _id: ObjectId | string; // Allow string for response
+    _id: ObjectId | string; 
     sender: 'user' | 'teacher';
     content: string;
-    correctedContent?: string;
+    // correctedContent?: string; // Deprecated field
+    correctedText?: string | null; // New field for corrected text
+    correctionExplanation?: string | null; // New field for explanation
     timestamp: Date;
 }
+
+// Interface for the structure of a Conversation document in the DB
+interface ConversationDoc {
+    _id: ObjectId;
+    userId: ObjectId;
+    teacher: TeacherType; // Use imported TeacherType
+    title: string;
+    messages: Message[]; // Array of Message objects as defined above
+    lastUpdated: Date;
+    createdAt?: Date; // Optional based on schema
+    updatedAt?: Date; // Optional based on schema
+    // Add other fields if present in the actual Conversation model/documents
+}
+
+// More specific type for the user document fetched from DB
+type UserDoc = WithId<Document> & Partial<IUser>;
 
 // POST /api/conversations/[conversationId]/messages
 export async function POST(
@@ -53,16 +75,20 @@ export async function POST(
     const conversationObjectId = new ObjectId(conversationId);
 
     // 2.5 Parse Request Body
-    const { content, grammarCorrection, skipPointsConsumption } = await req.json();
+    const { content, skipPointsConsumption } = await req.json();
     if (!content || typeof content !== 'string') {
        console.error(`POST messages: Invalid content received`);
       return NextResponse.json({ error: 'Valid message content required' }, { status: 400 });
     }
 
     // 3. Get DB connection
-    const { db } = await getClient();
-    const usersCollection = db.collection('users');
-    const conversationsCollection = db.collection('conversations'); // Assumes collection name
+    const { db: dbAny } = await getClient(); // Get db object (might be any)
+    const db = dbAny as Db; // Cast to Db type
+
+    // Now db.collection<UserDoc> should work without linter error
+    const usersCollection = db.collection<UserDoc>('users'); 
+    // Use the ConversationDoc interface when getting the collection
+    const conversationsCollection = db.collection<ConversationDoc>('conversations');
 
     // 4. Fetch User (Native) - Needed for AI context potentially
     const userDoc = await usersCollection.findOne({ _id: userObjectId });
@@ -92,7 +118,24 @@ export async function POST(
     }
 
     // Determine which user object to pass to AI (prefer plain object)
-    const userObjectForAI = updatedUserMongooseDoc ? updatedUserMongooseDoc.toObject() : userDoc;
+    // Ensure IUser structure is passed, using userDoc and adding englishLevel if missing
+    const userObjectForAI: IUser = {
+        ...(updatedUserMongooseDoc ? updatedUserMongooseDoc.toObject() : userDoc),
+        // Ensure essential fields expected by IUser exist
+        _id: userDoc._id,
+        email: userDoc.email!, 
+        name: userDoc.name!,
+        englishLevel: userDoc.englishLevel!, 
+        role: userDoc.role!,
+        points: remainingPoints!, // Use calculated remaining points
+        pointsLastUpdated: userDoc.pointsLastUpdated!,
+        pointsUsedThisMonth: userDoc.pointsUsedThisMonth!,
+        subscriptionStatus: userDoc.subscriptionStatus!,
+        createdAt: userDoc.createdAt!,
+        updatedAt: userDoc.updatedAt!,
+         // Add comparePassword stub if needed, though AI likely won't use it
+        comparePassword: async () => false, 
+    };
 
     // 6. Fetch Conversation (Native) & Verify Ownership
     const conversationDoc = await conversationsCollection.findOne({ _id: conversationObjectId });
@@ -106,50 +149,57 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized access to conversation' }, { status: 403 });
     }
 
-    // 7. Generate User Message (with optional correction)
-    const userMessage: Message = {
-      _id: new ObjectId(), // Generate ID upfront
-      sender: 'user',
-      content: content,
-      timestamp: new Date(),
-    };
-    if (grammarCorrection) {
-      try {
-          const hasErrors = await hasGrammarErrors(content);
-          if (hasErrors) {
-            userMessage.correctedContent = await correctGrammar(content);
-          }
-      } catch (aiError) {
-          console.error("AI grammar check/correction failed:", aiError);
-          // Proceed without correction if AI fails
-      }
+    // 7. Generate Grammar Correction (Always attempt)
+    let grammarResult: GrammarCorrectionResult = { correctedText: null, explanation: null };
+    try {
+        console.time('correctGrammar'); // Time the grammar correction call
+         // Pass englishLevel from the fetched user document
+        grammarResult = await correctGrammar(content, userDoc.englishLevel); 
+        console.timeEnd('correctGrammar');
+    } catch (aiError) {
+        console.timeEnd('correctGrammar'); // Ensure timer ends even on error
+        console.error("AI grammar correction failed:", aiError);
+        // Proceed without correction if AI fails, grammarResult remains default nulls
     }
 
-    // 8. Generate Teacher Response (passing plain objects)
-    let aiResponse: string;
-     try {
-         console.time('generateTeacherResponse'); // Start timer
-         aiResponse = await generateTeacherResponse(
-           conversationDoc.teacher,
-           content, // User's new message content
-           userObjectForAI, // Plain user object
-           conversationDoc.messages // Existing message history
-         );
-         console.timeEnd('generateTeacherResponse'); // End timer and log duration
-     } catch (aiError) {
-         console.timeEnd('generateTeacherResponse'); // Ensure timer ends even on error
-         console.error("AI teacher response generation failed:", aiError);
-         aiResponse = "Sorry, I encountered an error trying to respond. Could you try rephrasing?"; // Fallback response
-     }
-
-    const teacherMessage: Message = {
-      _id: new ObjectId(), // Generate ID upfront
-      sender: 'teacher',
-      content: aiResponse,
-      timestamp: new Date(),
+    // 8. Generate User Message Object (including correction results)
+    const userMessage: Message = {
+        _id: new ObjectId(), 
+        sender: 'user',
+        content: content,
+        correctedText: grammarResult.correctedText, // Add correctedText
+        correctionExplanation: grammarResult.explanation, // Add explanation
+        timestamp: new Date(),
     };
 
-    // 9. Update Conversation (Native $push)
+    // 9. Generate Teacher Response (passing plain objects)
+    let aiResponse: string;
+    try {
+        console.time('generateTeacherResponse'); 
+        aiResponse = await generateTeacherResponse(
+            conversationDoc.teacher,
+            content, 
+            userObjectForAI,
+            conversationDoc.messages
+        );
+        console.timeEnd('generateTeacherResponse'); 
+    } catch (aiError) {
+        console.timeEnd('generateTeacherResponse'); 
+        console.error("AI teacher response generation failed:", aiError);
+        aiResponse = "Sorry, I encountered an error trying to respond. Could you try rephrasing?"; // Fallback
+    }
+
+    const teacherMessage: Message = {
+        _id: new ObjectId(), 
+        sender: 'teacher',
+        content: aiResponse,
+        timestamp: new Date(),
+         // Teacher messages don't have corrections
+        correctedText: null, 
+        correctionExplanation: null
+    };
+
+    // 10. Update Conversation (Native $push)
     const updateResult = await conversationsCollection.updateOne(
       { _id: conversationObjectId },
       {
@@ -173,7 +223,7 @@ export async function POST(
         return NextResponse.json({ error: 'Failed to save messages' }, { status: 500 });
      }
 
-    // 10. Return the newly added messages
+    // 11. Return the newly added messages (with correction info)
     // Format IDs to strings for the response body
     const userMessageResponse = { ...userMessage, _id: userMessage._id.toString() };
     const teacherMessageResponse = { ...teacherMessage, _id: teacherMessage._id.toString() };

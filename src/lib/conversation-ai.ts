@@ -1,8 +1,13 @@
 import { IUser } from '@/models/User';
-import { IConversation } from '@/models/Conversation';
 import { generateAIResponse, AIMessage } from './ai';
 import { TeacherType } from './teachers';
 import 'server-only';
+
+// Define the structure for the grammar correction result
+export interface GrammarCorrectionResult {
+    correctedText: string | null;
+    explanation: string | null;
+}
 
 // Teacher profiles for reference
 export const TEACHER_PROFILES = {
@@ -71,7 +76,6 @@ Your responses should be in English. The LENGTH of your responses should be SHOR
 type MessageHistory = Array<{
   sender: 'user' | 'teacher';
   content: string;
-  correctedContent?: string;
   timestamp: Date;
 }>;
 
@@ -162,6 +166,7 @@ export async function generateTeacherResponse(
     const userProfile = `
 Student information:
 - Name: ${user.name}
+- Level: ${user.englishLevel || 'Not specified'}
 - Job: ${user.job || 'Not specified'}
 - English learning goal: ${user.goal || 'Not specified'}
 - Why they started learning English: ${user.startReason || 'Not specified'}
@@ -220,99 +225,87 @@ When relevant to the conversation, you may reference why they started learning E
 }
 
 /**
- * Detects if a text has grammar errors that need correction
+ * Corrects grammar errors in text and provides explanation based on user level.
  */
-export async function hasGrammarErrors(text: string): Promise<boolean> {
-  // Skip very short messages
-  if (text.length < 10) return false;
-  
-  try {
-    // Ask the AI to check for grammar errors
-    const prompt = `
-      Check the following English text for grammar errors:
-      "${text}"
-      
-      Does this text contain any grammar errors? Answer with just "YES" or "NO".
-    `;
-    
-    const response = await generateAIResponse([{ role: 'user', content: prompt }], {
-      maxTokens: 10,
-      temperature: 0.3,
-      systemPrompt: 'You are an expert English grammar checker. Your task is to determine if a given text contains grammar errors. Respond with "YES" if there are errors or "NO" if the text is grammatically correct.'
-    });
-    
-    // Check if the response contains "YES"
-    return response.trim().toUpperCase().includes('YES');
-  } catch (error) {
-    console.error('Error checking grammar:', error);
-    
-    // Fallback to simple pattern matching
-    const commonErrors = [
-      /\bi am\b/,           // lowercase "i am"
-      /\bi have\b/,         // lowercase "i have"
-      /\bi will\b/,         // lowercase "i will"
-      /\bim\b/,             // missing apostrophe in "I'm"
-      /\byou was\b/,        // "you was" instead of "you were"
-      /\bthey was\b/,       // "they was" instead of "they were"
-      /\bhe don't\b/,       // "he don't" instead of "he doesn't"
-      /\bshe don't\b/,      // "she don't" instead of "she doesn't"
-      /\bit don't\b/,       // "it don't" instead of "it doesn't"
-      /\bhave went\b/,      // "have went" instead of "have gone"
-      /\bis a \w+ people\b/ // "is a" with plural noun
-    ];
-    
-    return commonErrors.some(pattern => pattern.test(text));
-  }
-}
-
-/**
- * Corrects grammar errors in text
- */
-export async function correctGrammar(text: string): Promise<string> {
-  try {
-    // Ask the AI to correct grammar errors
-    const prompt = `
-      Correct any grammar errors in the following English text:
-      "${text}"
-      
-      Please provide:
-      1. The corrected text
-      2. A brief explanation of the corrections (in parentheses at the end)
-    `;
-    
-    const response = await generateAIResponse([{ role: 'user', content: prompt }], {
-      maxTokens: 300,
-      temperature: 0.3,
-      systemPrompt: 'You are an expert English grammar checker and teacher. Your task is to correct grammar errors in text provided by English learners. Provide the corrected text, and a brief explanation of the corrections.'
-    });
-    
-    return response;
-  } catch (error) {
-    console.error('Error correcting grammar:', error);
-    
-    // Fallback to simple pattern matching
-    let corrected = text;
-    
-    // Common corrections
-    corrected = corrected.replace(/\bi\b/g, 'I'); // Capitalize standalone "i"
-    corrected = corrected.replace(/\bi am\b/g, 'I am'); // Fix "i am"
-    corrected = corrected.replace(/\bi have\b/g, 'I have'); // Fix "i have"
-    corrected = corrected.replace(/\bi will\b/g, 'I will'); // Fix "i will"
-    corrected = corrected.replace(/\bim\b/g, "I'm"); // Fix "im"
-    corrected = corrected.replace(/\byou was\b/g, 'you were'); // Fix "you was"
-    corrected = corrected.replace(/\bthey was\b/g, 'they were'); // Fix "they was"
-    corrected = corrected.replace(/\bhe don't\b/g, "he doesn't"); // Fix "he don't"
-    corrected = corrected.replace(/\bshe don't\b/g, "she doesn't"); // Fix "she don't"
-    corrected = corrected.replace(/\bit don't\b/g, "it doesn't"); // Fix "it don't"
-    corrected = corrected.replace(/\bhave went\b/g, "have gone"); // Fix "have went"
-    
-    // If no changes were made, add a positive note
-    if (corrected === text) {
-      return text + " (Your grammar looks good!)";
+export async function correctGrammar(
+    text: string,
+    userLevel: string | undefined // Added userLevel parameter
+): Promise<GrammarCorrectionResult> {
+    // Skip very short messages
+    if (!text || text.trim().length < 5) { 
+        return { correctedText: null, explanation: null };
     }
-    
-    return corrected + " (I've corrected some grammar issues)";
-  }
+
+    // Determine the explanation language based on user level
+    const explanationLanguage = (userLevel === 'super_beginner' || userLevel === 'beginner') ? 'Japanese' : 'English';
+
+    try {
+        // Ask the AI to correct grammar errors and provide explanation
+        const prompt = `
+      Please analyze the following English text for grammatical errors:
+      "${text}"
+
+      If there are errors:
+      1. Provide the corrected version of the text.
+      2. Provide a brief explanation of the corrections. The explanation should be in ${explanationLanguage}.
+
+      If there are NO grammatical errors:
+      Simply respond with the JSON object: {"correctedText": null, "explanation": null}
+
+      If there ARE errors, respond ONLY with a JSON object in the following format, containing the corrected text and the explanation in the specified language:
+      {
+        "correctedText": "The corrected sentence or phrase.",
+        "explanation": "Explanation of the correction(s) in ${explanationLanguage}."
+      }
+      Do not include any other text or markdown formatting outside the JSON object.
+    `;
+
+        const response = await generateAIResponse([{ role: 'user', content: prompt }], {
+            maxTokens: 400, // Increased slightly for potential JSON structure and explanation
+            temperature: 0.3,
+            systemPrompt: `You are an expert English grammar checker and teacher. Your task is to correct grammar errors in text provided by English learners. Respond strictly in the JSON format specified. Provide explanations in ${explanationLanguage} as requested.`
+        });
+
+        // Attempt to parse the JSON response
+        try {
+            // Clean potential markdown code fences
+            const cleanedResponse = response.replace(/```json\n?|\n?```/g, '').trim();
+            const result: GrammarCorrectionResult = JSON.parse(cleanedResponse);
+
+            // Basic validation of the parsed structure
+            if (typeof result.correctedText !== 'string' && result.correctedText !== null) {
+                 console.warn('correctGrammar: AI response correctedText is not string or null:', result.correctedText);
+                 throw new Error('Invalid correctedText format in AI response');
+            }
+             if (typeof result.explanation !== 'string' && result.explanation !== null) {
+                 console.warn('correctGrammar: AI response explanation is not string or null:', result.explanation);
+                 throw new Error('Invalid explanation format in AI response');
+            }
+
+            // If response indicates no errors, ensure consistency
+             if (result.correctedText === null && result.explanation === null) {
+                 return { correctedText: null, explanation: null };
+             }
+            // If correction exists, return it
+             if (result.correctedText && result.explanation) {
+                 return result;
+             }
+            // If structure is unexpected (e.g., one null, one not), treat as no correction
+             console.warn('correctGrammar: AI response had unexpected null combination:', result);
+             return { correctedText: null, explanation: null };
+
+        } catch (parseError) {
+            console.error('Error parsing grammar correction JSON response:', parseError, 'Raw response:', response);
+            // If JSON parsing fails, return no correction
+            return { correctedText: null, explanation: null };
+        }
+
+    } catch (error) {
+        console.error('Error calling AI for grammar correction:', error);
+        // Fallback if the AI call itself fails
+        // We won't use regex fallback anymore as it doesn't fit the requirements well.
+        return { correctedText: null, explanation: null }; 
+    }
 }
 
 /**
