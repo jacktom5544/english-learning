@@ -7,6 +7,7 @@ import Image from 'next/image';
 import { POINT_CONSUMPTION } from '@/lib/pointSystem';
 import { useUserPoints } from '@/components/providers/UserPointsProvider';
 import { EssayWithErrors } from './components';
+import { JAPANESE_TEACHER_PROFILES, JapaneseTeacherKey } from '@/lib/japanese-teachers';
 
 interface GrammarEntry {
   _id: string;
@@ -121,6 +122,7 @@ export default function GrammarPage() {
   const [analysisResult, setAnalysisResult] = useState<any>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [checkProgressInterval, setCheckProgressInterval] = useState<NodeJS.Timeout | null>(null);
+  const [isTeacherTyping, setIsTeacherTyping] = useState(false);
   
   const conversationEndRef = useRef<HTMLDivElement>(null);
 
@@ -281,6 +283,7 @@ export default function GrammarPage() {
               });
               // Add initial teacher message if conversation is empty
               if (!data.conversation || data.conversation.length === 0) {
+                // This will be replaced by the proper teacher feedback from the API
                 setConversation([{
                   sender: 'teacher',
                   content: "エッセイを分析しました。質問があればどうぞ。",
@@ -335,7 +338,8 @@ export default function GrammarPage() {
           topics,
           essay,
           grammaticalErrors: [],
-          conversation: []
+          conversation: [],
+          preferredTeacher: userProfile?.preferredTeacher || 'taro'
         }),
       });
       
@@ -405,6 +409,9 @@ export default function GrammarPage() {
       setConversation(updatedConversation);
       setUserQuestion('');
       
+      // Show typing indicator after a short delay
+      setTimeout(() => setIsTeacherTyping(true), 300);
+      
       // Send the question to the API
       const response = await fetch(`/api/grammar`, {
         method: 'PATCH',
@@ -439,6 +446,7 @@ export default function GrammarPage() {
               clearInterval(checkInterval);
               setConversation(checkData.conversation);
               setMessage('');
+              setIsTeacherTyping(false); // Hide typing indicator when response is received
             }
           }
         } catch (error) {
@@ -449,11 +457,13 @@ export default function GrammarPage() {
       // Clear interval after 30 seconds as a fallback
       setTimeout(() => {
         if (checkInterval) clearInterval(checkInterval);
+        setIsTeacherTyping(false); // Ensure typing indicator is hidden even if polling fails
       }, 30000);
       
       await refreshPoints();
     } catch (error: any) {
       setMessage(`質問の送信に失敗しました。${error.message || 'しばらくしてからもう一度お試しください。'}`);
+      setIsTeacherTyping(false); // Hide typing indicator on error
     } finally {
       setIsAskingQuestion(false);
     }
@@ -610,13 +620,15 @@ export default function GrammarPage() {
                     <h2 className="text-xl font-semibold mb-3">文法エラーの分析</h2>
                     
                     {grammaticalErrors.length > 0 ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                        {grammaticalErrors.map((error, index) => (
-                          <div key={index} className="bg-white p-4 rounded-lg shadow">
-                            <h3 className="font-medium text-lg">{error.category}</h3>
-                            <p className="text-gray-700">エラー回数: {error.count}</p>
-                          </div>
-                        ))}
+                      <div className="bg-white p-4 rounded-lg shadow mb-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                          {grammaticalErrors.map((error, index) => (
+                            <div key={index} className="bg-blue-50 p-3 rounded-lg">
+                              <h3 className="font-medium text-sm">{error.category}</h3>
+                              <p className="text-gray-700 text-sm">回数: {error.count}</p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ) : (
                       <div className="bg-green-50 p-4 rounded-lg mb-4">
@@ -646,6 +658,23 @@ export default function GrammarPage() {
                       <div className="mb-4 max-h-96 overflow-y-auto">
                         {conversation.map((msg, index) => (
                           <div key={index} className={`mb-4 ${msg.sender === 'user' ? 'text-right' : ''}`}>
+                            {msg.sender === 'teacher' && (
+                              <div className="flex items-start mb-1">
+                                <div className="flex-shrink-0 w-10 h-10 mr-2 relative">
+                                  <div className="absolute inset-0 rounded-full overflow-hidden">
+                                    <Image
+                                      src={teacherInfo[userProfile?.preferredTeacher || 'taro'].image}
+                                      alt={teacherInfo[userProfile?.preferredTeacher || 'taro'].name}
+                                      fill
+                                      style={{ objectFit: 'cover' }}
+                                    />
+                                  </div>
+                                </div>
+                                <div className="text-xs text-gray-600 mt-1">
+                                  {teacherInfo[userProfile?.preferredTeacher || 'taro'].name}
+                                </div>
+                              </div>
+                            )}
                             <div className={`inline-block p-3 rounded-lg max-w-[80%] ${
                               msg.sender === 'user' ? 'bg-blue-100 text-blue-900' : 'bg-gray-100 text-gray-900'
                             }`}>
@@ -656,6 +685,33 @@ export default function GrammarPage() {
                             </div>
                           </div>
                         ))}
+                        
+                        {/* Typing indicator */}
+                        {isTeacherTyping && (
+                          <div className="flex items-start mb-4">
+                            <div className="flex-shrink-0 w-10 h-10 mr-2 relative">
+                              <div className="absolute inset-0 rounded-full overflow-hidden">
+                                <Image
+                                  src={teacherInfo[userProfile?.preferredTeacher || 'taro'].image}
+                                  alt={teacherInfo[userProfile?.preferredTeacher || 'taro'].name}
+                                  fill
+                                  style={{ objectFit: 'cover' }}
+                                />
+                              </div>
+                            </div>
+                            <div className="inline-block p-3 rounded-lg bg-gray-100">
+                              <div className="flex items-center">
+                                <div className="flex space-x-1">
+                                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '600ms' }}></div>
+                                </div>
+                                <span className="ml-2 text-sm text-gray-500">回答を作成中...</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        
                         <div ref={conversationEndRef} />
                       </div>
                       

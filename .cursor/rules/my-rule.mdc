@@ -31,6 +31,5 @@ Don't edit content of .env.local
 -Important 
 The native MongoDB driver proved more stable than Mongoose in the Amplify serverless environment for the refactored routes. 
 So, always use native MongoDB driver.
-Don't change layout and design unless you are explicitly asked
 
 

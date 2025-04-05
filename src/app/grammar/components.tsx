@@ -21,19 +21,6 @@ export function EssayWithErrors({
   
   // Process and validate errors on mount or when errors change
   useEffect(() => {
-    console.log("EssayWithErrors received errors:", JSON.stringify(errors, null, 2));
-    console.log("Essay content length:", essay.length);
-    // Detail check some errors if available
-    if (errors && errors.length > 0) {
-      console.log("First error details:", {
-        type: errors[0].type,
-        text: errors[0].text,
-        positions: `${errors[0].startPos}-${errors[0].endPos}`,
-        textFromPositions: essay.substring(errors[0].startPos, errors[0].endPos),
-        explanation: errors[0].explanation
-      });
-    }
-    
     // Filter out invalid errors and sort by position
     const validErrors = (errors || [])
       .filter(error => 
@@ -45,8 +32,6 @@ export function EssayWithErrors({
       )
       .sort((a, b) => a.startPos - b.startPos);
     
-    console.log(`EssayWithErrors: Processing ${errors?.length || 0} errors, ${validErrors.length} valid`);
-    
     // Only keep non-overlapping errors
     const nonOverlappingErrors: typeof errors = [];
     let lastEndPos = -1;
@@ -55,8 +40,6 @@ export function EssayWithErrors({
       if (error.startPos >= lastEndPos) {
         nonOverlappingErrors.push(error);
         lastEndPos = error.endPos;
-      } else {
-        console.log(`EssayWithErrors: Skipping overlapping error at pos ${error.startPos}-${error.endPos}`);
       }
     }
     
@@ -69,7 +52,6 @@ export function EssayWithErrors({
   
   if (!processedErrors || processedErrors.length === 0) {
     // No errors found, display the essay as-is
-    console.log("EssayWithErrors: No valid errors to display");
     return (
       <div className="relative whitespace-pre-wrap bg-gray-50 p-3 rounded border border-gray-200">
         {essay}

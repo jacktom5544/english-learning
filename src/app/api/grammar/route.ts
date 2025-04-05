@@ -15,6 +15,7 @@ import { GrammarDoc, IGrammar } from '@/models/Grammar';
 import deepseek from '@/lib/deepseek';
 import { POINT_CONSUMPTION } from '@/lib/pointSystem';
 import { IUser } from '@/models/User'; // Keep the IUser interface
+import { JAPANESE_TEACHER_PROFILES } from '@/lib/japanese-teachers';
 
 // Define user document type for MongoDB
 type UserDoc = WithId<any> & Partial<IUser>;
@@ -274,8 +275,6 @@ function detectErrorsInEssay(essay: string): {
     }
   }
   
-  console.log(`Detected ${errors.length} errors in essay manually`);
-  
   return {
     errors,
     categories: Object.entries(errorTypeCounts).map(([category, count]) => ({ category, count: count }))
@@ -312,7 +311,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(serializedEntries);
   } catch (error) {
-    console.error('Error fetching grammar entries:', error);
     return NextResponse.json({ error: 'Failed to fetch grammar entries' }, { status: 500 });
   }
 }
@@ -394,7 +392,6 @@ export async function POST(req: NextRequest) {
       userId: userId.toString()
     });
   } catch (error) {
-    console.error('Error creating grammar entry:', error);
     return NextResponse.json({ error: 'Failed to create grammar entry' }, { status: 500 });
   }
 }
@@ -407,15 +404,12 @@ async function processGrammarAnalysisAsync(
   englishLevel: string
 ) {
   try {
-    console.log(`Starting async grammar analysis for entry: ${grammarEntryId}`);
-    
     // Get MongoDB client
     const { db: _db } = await getClient();
     const db = _db as Db;
     const grammarCollection = db.collection<GrammarDoc>('grammars');
     
     // Analyze grammar using Deepseek
-    console.log("Starting Deepseek API call...");
     const response = await deepseek.chat.completions.create({
       model: 'deepseek-chat',
       messages: [
@@ -487,16 +481,31 @@ async function processGrammarAnalysisAsync(
     });
 
     const analysisContent = response.choices[0].message.content || '{}';
-    console.log("Raw response content received");
     
     // Extract and parse JSON
     const extractedContent = extractJsonFromMarkdown(analysisContent);
-    console.log("Attempting to parse content");
     const analysisResult = JSON.parse(extractedContent);
     
     // Fix error positions and create properly structured errorDetails
     const fixedErrors = fixErrorPositions(analysisResult.errors || [], essay);
+
+    // Generate teacher feedback based on the analysis
+    const teacherFeedback = await generateInitialTeacherFeedback(
+      essay,
+      preferredTeacher,
+      englishLevel,
+      fixedErrors,
+      analysisResult.errorCategories || []
+    );
     
+    // Create initial conversation with teacher feedback
+    const timestamp = new Date();
+    const conversation = [{
+      sender: 'teacher' as 'teacher',
+      content: teacherFeedback,
+      timestamp
+    }];
+
     // Update grammar entry with analysis results
     await grammarCollection.updateOne(
       { _id: new ObjectId(grammarEntryId) },
@@ -504,16 +513,13 @@ async function processGrammarAnalysisAsync(
         $set: { 
           grammaticalErrors: analysisResult.errorCategories || [],
           errorDetails: [{ errors: fixedErrors }],
+          conversation,
           status: 'completed',
           updatedAt: new Date()
         } 
       }
     );
-    
-    console.log(`Completed grammar analysis for entry: ${grammarEntryId}`);
   } catch (error) {
-    console.error(`Error in async grammar analysis for entry ${grammarEntryId}:`, error);
-    
     // Get MongoDB client to update status to failed
     try {
       const { db: _db } = await getClient();
@@ -530,8 +536,71 @@ async function processGrammarAnalysisAsync(
         }
       );
     } catch (updateError) {
-      console.error(`Failed to update grammar entry status: ${updateError}`);
     }
+  }
+}
+
+// New function to generate initial teacher feedback
+async function generateInitialTeacherFeedback(
+  essay: string,
+  preferredTeacher: string,
+  englishLevel: string,
+  errors: any[],
+  errorCategories: { category: string, count: number }[]
+) {
+  try {
+    // Get teacher profile for feedback style
+    const teacherProfile = JAPANESE_TEACHER_PROFILES[preferredTeacher as keyof typeof JAPANESE_TEACHER_PROFILES] || 
+                          JAPANESE_TEACHER_PROFILES.taro;
+    
+    // Create error summary
+    const errorSummary = errorCategories.length > 0 
+      ? errorCategories.map(e => `・${e.category}: ${e.count}回`).join('\n')
+      : '文法エラーは見つかりませんでした。';
+
+    // Generate feedback using Deepseek
+    const response = await deepseek.chat.completions.create({
+      model: 'deepseek-chat',
+      messages: [
+        {
+          role: 'system',
+          content: `${teacherProfile.writingFeedbackPersonaPrompt}
+                   
+                   あなたは英語教師として、日本人学習者の英作文をチェックしています。
+                   
+                   学習者のレベル: ${englishLevel}
+                   
+                   以下の作文の文法チェック結果に基づいて、学習者にフィードバックを提供してください。
+                   フィードバックでは次の内容を含めてください：
+                   1. 文法ミスの分析（どのような種類のミスが多いか）
+                   2. 文章構成や表現方法の改善点
+                   
+                   フィードバックは日本語で書いてください。キャラクターの個性に合わせた話し方で回答してください。`
+        },
+        {
+          role: 'user',
+          content: `英作文：
+                   """
+                   ${essay}
+                   """
+                   
+                   文法エラーの分析：
+                   ${errorSummary}
+                   
+                   詳細なエラー：
+                   ${errors.map(e => `・"${e.text}": ${e.type} - ${e.explanation}`).join('\n')}
+                   
+                   この分析結果に基づいて、学習者へのフィードバックを作成してください。`
+        }
+      ],
+      temperature: 0.7,
+      max_tokens: 1500
+    });
+
+    // Return the feedback
+    return response.choices[0].message.content || 'エッセイを分析しました。質問があればどうぞ。';
+  } catch (error) {
+    return 'エッセイを分析しました。質問があればどうぞ。';
   }
 }
 
@@ -541,7 +610,6 @@ function extractJsonFromMarkdown(content: string) {
   if (content.includes('```json')) {
     const jsonBlockMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
     if (jsonBlockMatch && jsonBlockMatch[1]) {
-      console.log("Found JSON code block in markdown response");
       return jsonBlockMatch[1].trim();
     }
   }
@@ -549,19 +617,15 @@ function extractJsonFromMarkdown(content: string) {
   // If no code block found, try to find a JSON object directly
   const jsonMatch = content.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
-    console.log("Found JSON object in content");
     return jsonMatch[0];
   }
   
-  console.log("No JSON found in content");
   return content;
 }
 
 // Fix error positions by finding actual text occurrences
 function fixErrorPositions(errors: any[], essay: string) {
   if (!errors || !Array.isArray(errors)) return [];
-  
-  console.log("Fixing error positions...");
   
   return errors.map(error => {
     // Skip if missing required fields
@@ -575,8 +639,6 @@ function fixErrorPositions(errors: any[], essay: string) {
       const index = essay.indexOf(textToFind);
       
       if (index !== -1) {
-        // Found a match, update positions
-        console.log(`Found match for "${textToFind}" at position ${index}`);
         return {
           ...error,
           startPos: index,
@@ -589,7 +651,6 @@ function fixErrorPositions(errors: any[], essay: string) {
         const insensitiveIndex = lowerEssay.indexOf(lowerText);
         
         if (insensitiveIndex !== -1) {
-          console.log(`Found case-insensitive match for "${textToFind}" at position ${insensitiveIndex}`);
           return {
             ...error,
             startPos: insensitiveIndex,
@@ -600,7 +661,6 @@ function fixErrorPositions(errors: any[], essay: string) {
     }
     
     // No match found, keep original positions but mark for logging
-    console.log(`No match found for error text: "${textToFind}"`);
     return error;
   });
 }
@@ -608,11 +668,8 @@ function fixErrorPositions(errors: any[], essay: string) {
 // API for generating random topics
 export async function PUT(req: NextRequest) {
   try {
-    console.log("Starting topic generation...");
-    
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      console.log("Unauthorized: No valid session");
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -622,28 +679,21 @@ export async function PUT(req: NextRequest) {
     const usersCollection = db.collection<UserDoc>('users');
     const userId = new ObjectId(session.user.id);
     
-    console.log("Connected to database");
-    
     // Get user profile for English level
     const user = await usersCollection.findOne({ _id: userId });
     if (!user) {
-      console.log("User not found:", session.user.id);
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
-    console.log("User found");
     
     // Check if user has enough points
     if ((user.points || 0) < POINT_CONSUMPTION.GRAMMAR_TOPIC_GENERATION) {
-      console.log("Not enough points:", user.points, "needed:", POINT_CONSUMPTION.GRAMMAR_TOPIC_GENERATION);
       return NextResponse.json({ error: 'Not enough points' }, { status: 403 });
     }
-    console.log("User has enough points");
 
     // Generate topics based on English level
     const englishLevel = user.englishLevel || 'beginner';
     const job = user.job || '';
     const goal = user.goal || '';
-    console.log("User profile data retrieved for topic generation");
 
     let systemPrompt = `Generate 3 random, unique essay topics for ${englishLevel} English learners`;
     if (job) systemPrompt += ` who work as ${job}`;
@@ -656,11 +706,8 @@ export async function PUT(req: NextRequest) {
       systemPrompt += `. The topics should be detailed enough to encourage writing at least 100 words.`;
     }
     
-    console.log("System prompt initialized");
-    
     // Check if Deepseek API key is set
     if (!process.env.DEEPSEEK_API_KEY) {
-      console.error("ERROR: DEEPSEEK_API_KEY is not set in environment variables");
       return NextResponse.json({ error: 'Deepseek API key not configured' }, { status: 500 });
     }
     
@@ -669,7 +716,6 @@ export async function PUT(req: NextRequest) {
     let modelUsed = "deepseek-chat";
     
     try {
-      console.log("Starting Deepseek request...");
       const userMessage = englishLevel === '超初級者' || englishLevel === '初級者'
         ? '日本語で3つのシンプルなエッセイトピックを生成してください。トピックは必ず日本語で記述し、番号付きリストで回答してください。例: 1. あなたの趣味について教えてください。'
         : 'Generate 3 simple essay topics. Format as a numbered list.';
@@ -683,25 +729,20 @@ export async function PUT(req: NextRequest) {
         temperature: 0.8,
         max_tokens: 300
       });
-      console.log("Raw content from Deepseek received");
       
       if (response.choices && response.choices.length > 0 && response.choices[0].message.content) {
         const content = response.choices[0].message.content;
-        console.log("Raw content from Deepseek received");
         
         topics = extractTopicsFromContent(content);
         modelUsed = "deepseek-chat";
       }
     } catch (error) {
-      console.error("Error with Deepseek request:", error);
-      
       // Fall back to hardcoded topics
       topics = [];
     }
     
     // If Deepseek failed, use hardcoded fallback topics
     if (topics.length === 0) {
-      console.log("Using fallback topics as Deepseek failed");
       if (englishLevel === '超初級者' || englishLevel === '初級者') {
         topics = [
           "あなたの趣味について説明してください。",
@@ -726,25 +767,21 @@ export async function PUT(req: NextRequest) {
         topics.push(`Topic ${topics.length + 1}: Please write about your day.`);
       }
     }
-    
-    console.log("Final topics:", topics);
-    console.log("Model used:", modelUsed);
-    
+
     // Deduct points using MongoDB driver
     await usersCollection.updateOne(
       { _id: userId },
       { $inc: { points: -POINT_CONSUMPTION.GRAMMAR_TOPIC_GENERATION } }
     );
-    console.log("Points deducted");
 
     return NextResponse.json({ topics, modelUsed });
   } catch (error) {
-    console.error('Error generating topics:', error);
     // More detailed error information
     if (error instanceof Error) {
-      console.error('Error name:', error.name);
-      console.error('Error message:', error.message);
-      console.error('Error stack:', error.stack);
+      return NextResponse.json({ 
+        error: 'Failed to generate topics',
+        message: error.message
+      }, { status: 500 });
     }
     return NextResponse.json({ 
       error: 'Failed to generate topics',
@@ -755,8 +792,6 @@ export async function PUT(req: NextRequest) {
 
 // Helper function to extract topics from content
 function extractTopicsFromContent(content: string): string[] {
-  console.log("Extracting topics from content");
-  
   if (!content) return [];
   
   // Remove any markdown formatting that might be present
@@ -784,8 +819,6 @@ function extractTopicsFromContent(content: string): string[] {
   
   // If no numbered items found, try to identify topics based on length and content
   if (topics.length === 0) {
-    console.log("No numbered topics found, attempting to extract based on content");
-    
     // Updated pattern to handle both English and Japanese topic indicators
     const topicPattern = /^(Topic|トピック)\s*\d+\s*[:：]/i;
     
@@ -805,8 +838,6 @@ function extractTopicsFromContent(content: string): string[] {
     
     // If still no topics found, just take non-instruction lines with sufficient length
     if (topics.length === 0) {
-      console.log("No topic patterns found, extracting potential topic sentences");
-      
       // Skip lines that look like instructions in English or Japanese
       const instructionPattern = /^(please|write|describe|explain|discuss|tell|share|書いて|説明して|教えて|記述して)/i;
       
@@ -837,7 +868,6 @@ function extractTopicsFromContent(content: string): string[] {
                 .trim();
   });
   
-  console.log("Extracted topics:", topics);
   return topics;
 }
 
@@ -913,7 +943,6 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ success: true, conversation });
   } catch (error) {
-    console.error('Error submitting question:', error);
     return NextResponse.json({ error: 'Failed to submit question' }, { status: 500 });
   }
 }
@@ -927,8 +956,6 @@ async function generateTeacherResponseAsync(
   englishLevel: string
 ) {
   try {
-    console.log(`Generating teacher response for entry: ${grammarEntryId}`);
-    
     // Get MongoDB client
     const { db: _db } = await getClient();
     const db = _db as Db;
@@ -1001,10 +1028,8 @@ async function generateTeacherResponseAsync(
         } 
       }
     );
-    
-    console.log(`Teacher response generated for entry: ${grammarEntryId}`);
   } catch (error) {
-    console.error(`Error generating teacher response for entry ${grammarEntryId}:`, error);
+    // Error handling
   }
 }
 
@@ -1021,4 +1046,4 @@ function getTeacherPersonality(teacher: string): string {
     default:
       return '・太郎先生。標準的な丁寧語で話す。「〜です」「〜ます」を使い、分かりやすく教える一般的な先生';
   }
-} 
+}
