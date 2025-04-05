@@ -37,6 +37,12 @@ export const POINT_CONSUMPTION = {
   
   // Points consumed for analyzing grammar
   GRAMMAR_ANALYSIS: 1,
+  
+  // Points consumed for starting a coaching session
+  COACHING_SESSION: 5,
+  
+  // Points consumed for each coaching message
+  COACHING_MESSAGE: 2,
 };
 
 // Helper for point operations
