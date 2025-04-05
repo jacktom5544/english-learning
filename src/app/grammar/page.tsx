@@ -724,8 +724,8 @@ export default function GrammarPage() {
                 <div className="h-12 w-12 bg-blue-600 rounded-full animate-bounce delay-200"></div>
               </div>
               <p className="text-lg font-medium text-gray-700 mt-2">AIがトピックを生成中です・・・</p>
-              <p className="text-sm text-gray-500 mt-1">少々お待ちください（数秒～30秒程度）</p>
-              <p className="text-xs text-gray-400 mt-1">タイムアウトした場合は、再度試してみてください</p>
+              <p className="text-sm text-gray-500 mt-1">少々お待ちください（30秒程度）</p>
+              <p className="text-xs text-gray-400 mt-1">※ユーザーに合ったトピックを生成するので少し時間が掛かります</p>
             </div>
           )}
         </div>
@@ -792,8 +792,8 @@ export default function GrammarPage() {
                 <div className="h-12 w-12 bg-blue-600 rounded-full animate-bounce delay-200"></div>
               </div>
               <p className="text-lg font-medium text-gray-700 mt-2">AIがエッセイを分析中です・・・</p>
-              <p className="text-sm text-gray-500 mt-1">少々お待ちください（数秒～30秒程度）</p>
-              <p className="text-xs text-gray-400 mt-1">タイムアウトしても裏でAIが処理を継続しています。数分後に再度確認してください。</p>
+              <p className="text-sm text-gray-500 mt-1">少々お待ちください（1分～2分程度）</p>
+              <p className="text-xs text-gray-400 mt-1">AIがエッセイを細かく分析するので時間が掛かります</p>
             </div>
           ) : (
             <>
