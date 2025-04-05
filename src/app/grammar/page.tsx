@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
@@ -124,6 +124,13 @@ export default function GrammarPage() {
   const [checkProgressInterval, setCheckProgressInterval] = useState<NodeJS.Timeout | null>(null);
   const [isTeacherTyping, setIsTeacherTyping] = useState(false);
   
+  const [showHistory, setShowHistory] = useState(false);
+  const [grammarHistory, setGrammarHistory] = useState<GrammarEntry[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const entriesPerPage = 5;
+  const [currentEntryTeacher, setCurrentEntryTeacher] = useState<'hiroshi' | 'reiko' | 'iwao' | 'taro'>('taro');
+  
   const conversationEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -140,12 +147,17 @@ export default function GrammarPage() {
       const response = await fetch(`/api/users/${session?.user?.id}`);
       if (response.ok) {
         const userData = await response.json();
+        const preferredTeacher = userData.preferredTeacher || 'taro';
+        
         setUserProfile({
           englishLevel: userData.englishLevel || 'beginner',
           nickname: userData.nickname || userData.name || '',
-          preferredTeacher: userData.preferredTeacher || 'taro',
+          preferredTeacher: preferredTeacher,
           points: points,
         });
+        
+        // Initialize the current entry teacher with the user's preferred teacher
+        setCurrentEntryTeacher(preferredTeacher);
       }
     } catch (error) {
       // Error silently handled
@@ -351,6 +363,9 @@ export default function GrammarPage() {
       const data = await response.json();
       setGrammarEntryId(data._id);
       
+      // Set current teacher from the user profile
+      setCurrentEntryTeacher(userProfile?.preferredTeacher || 'taro');
+      
       // Check the status and set up for progress tracking
       if (data.status === 'pending' || data.status === 'processing') {
         setIsProcessing(true);
@@ -488,6 +503,70 @@ export default function GrammarPage() {
     setIsEssaySubmitted(false);
     setIsAnalysisCompleted(false);
     setUserQuestion('');
+    setAnalysisResult(null);
+    setMessage('');
+    // Reset to user's current preferred teacher
+    setCurrentEntryTeacher(userProfile?.preferredTeacher || 'taro');
+  };
+
+  // Fetch grammar history
+  const fetchGrammarHistory = useCallback(async () => {
+    if (!session?.user?.id) return;
+    
+    setIsLoadingHistory(true);
+    setCurrentPage(1); // Reset to page 1 when fetching new data
+    
+    try {
+      const response = await fetch('/api/grammar');
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch grammar history');
+      }
+      
+      const data = await response.json();
+      
+      // Make sure we received an array
+      if (Array.isArray(data)) {
+        setGrammarHistory(data);
+      } else {
+        console.error('Expected array but got:', data);
+        setGrammarHistory([]);
+        setMessage('履歴データの形式が無効です。');
+      }
+    } catch (error) {
+      console.error('Error fetching grammar history:', error);
+      setGrammarHistory([]);
+      setMessage('履歴の読み込みに失敗しました。');
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }, [session?.user?.id]);
+  
+  // Load history when toggle is clicked
+  useEffect(() => {
+    if (showHistory && grammarHistory.length === 0) {
+      fetchGrammarHistory();
+    }
+  }, [showHistory, grammarHistory.length, fetchGrammarHistory]);
+  
+  const loadHistoryEntry = (entry: GrammarEntry) => {
+    setTopics(entry.topics);
+    setEssay(entry.essay);
+    setGrammarEntryId(entry._id);
+    setGrammaticalErrors(entry.grammaticalErrors || []);
+    setConversation(entry.conversation || []);
+    setIsEssaySubmitted(true);
+    setIsAnalysisCompleted(true);
+    setIsTopicGenerated(true);
+    
+    // Set the teacher from the entry
+    setCurrentEntryTeacher(entry.preferredTeacher || 'taro');
+    
+    if (entry.errorDetails && entry.errorDetails.length > 0) {
+      setAnalysisResult({
+        errors: entry.errorDetails
+      });
+    }
   };
 
   if (isLoading || !userProfile) {
@@ -503,8 +582,10 @@ export default function GrammarPage() {
     <div className="container mx-auto p-4">
       <div className="mb-4 flex justify-between items-center">
         <h1 className="text-2xl font-bold">文法チェック</h1>
-        <div className="text-sm">
-          残りポイント: {renderPointsDisplay()}
+        <div className="flex items-center gap-4">
+          <div className="text-sm">
+            残りポイント: {renderPointsDisplay()}
+          </div>
         </div>
       </div>
       
@@ -514,8 +595,110 @@ export default function GrammarPage() {
         </div>
       )}
       
+      {/* History section - always accessible */}
+      <div className="mb-6">
+        <div className="flex justify-between items-center mb-2">
+          <h2 className="text-lg font-medium text-gray-900">過去の文法チェック</h2>
+          <button
+            onClick={() => setShowHistory(!showHistory)}
+            className="text-sm text-gray-500 hover:text-gray-700"
+          >
+            {showHistory ? '履歴を隠す' : '履歴を表示する'}
+          </button>
+        </div>
+        
+        {showHistory && (
+          <>
+            {isLoadingHistory ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500"></div>
+              </div>
+            ) : grammarHistory.length === 0 ? (
+              <div className="text-center py-8 bg-gray-50 rounded-lg">
+                <p className="text-gray-500">まだ文法チェックの履歴はありません。</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {Array.isArray(grammarHistory) && grammarHistory
+                  .slice((currentPage - 1) * entriesPerPage, currentPage * entriesPerPage)
+                  .filter(entry => entry && typeof entry === 'object')
+                  .map((entry) => (
+                    <div 
+                      key={entry._id || `entry-${Math.random()}`} 
+                      className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 cursor-pointer"
+                      onClick={() => loadHistoryEntry(entry)}
+                    >
+                      <div className="flex items-start">
+                        <div className="flex-shrink-0 w-12 h-12 mr-4 relative">
+                          <div className="absolute inset-0 rounded-full overflow-hidden">
+                            <Image
+                              src={teacherInfo[entry.preferredTeacher || 'taro'].image}
+                              alt={teacherInfo[entry.preferredTeacher || 'taro'].name}
+                              fill
+                              style={{ objectFit: 'cover' }}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex justify-between">
+                            <h3 className="font-medium text-gray-900 text-lg">{entry.topics?.[0] || 'トピック名なし'}</h3>
+                            <p className="text-xs text-gray-500">
+                              {entry.createdAt ? new Date(entry.createdAt).toLocaleDateString() : '日付なし'}
+                            </p>
+                          </div>
+                          <p className="text-sm text-gray-600 line-clamp-2 mt-1">{entry.essay ? entry.essay.substring(0, 120) + '...' : '内容なし'}</p>
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {entry.grammaticalErrors && Array.isArray(entry.grammaticalErrors) && entry.grammaticalErrors.length > 0 ? (
+                              entry.grammaticalErrors.slice(0, 3).map((error, i) => (
+                                <span key={i} className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">
+                                  {error?.category || '不明なエラー'}: {error?.count || 0}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded">
+                                エラーなし
+                              </span>
+                            )}
+                            {entry.grammaticalErrors && Array.isArray(entry.grammaticalErrors) && entry.grammaticalErrors.length > 3 && (
+                              <span className="text-xs text-gray-500">
+                                +{entry.grammaticalErrors.length - 3}項目
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+            
+            {Array.isArray(grammarHistory) && grammarHistory.length > entriesPerPage && (
+              <div className="flex justify-center mt-6 space-x-2">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1 border rounded-md hover:bg-gray-100 disabled:opacity-50"
+                >
+                  前へ
+                </button>
+                <span className="px-3 py-1">
+                  {currentPage} / {Math.ceil(grammarHistory.length / entriesPerPage) || 1}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(Math.ceil(grammarHistory.length / entriesPerPage) || 1, p + 1))}
+                  disabled={currentPage >= (Math.ceil(grammarHistory.length / entriesPerPage) || 1)}
+                  className="px-3 py-1 border rounded-md hover:bg-gray-100 disabled:opacity-50"
+                >
+                  次へ
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      
       {!isEssaySubmitted && (
-        <TeacherMessage teacher={userProfile?.preferredTeacher || 'taro'} nickname={userProfile?.nickname || ''} />
+        <TeacherMessage teacher={currentEntryTeacher} nickname={userProfile?.nickname || ''} />
       )}
       
       {!isTopicGenerated ? (
@@ -663,15 +846,15 @@ export default function GrammarPage() {
                                 <div className="flex-shrink-0 w-10 h-10 mr-2 relative">
                                   <div className="absolute inset-0 rounded-full overflow-hidden">
                                     <Image
-                                      src={teacherInfo[userProfile?.preferredTeacher || 'taro'].image}
-                                      alt={teacherInfo[userProfile?.preferredTeacher || 'taro'].name}
+                                      src={teacherInfo[currentEntryTeacher].image}
+                                      alt={teacherInfo[currentEntryTeacher].name}
                                       fill
                                       style={{ objectFit: 'cover' }}
                                     />
                                   </div>
                                 </div>
                                 <div className="text-xs text-gray-600 mt-1">
-                                  {teacherInfo[userProfile?.preferredTeacher || 'taro'].name}
+                                  {teacherInfo[currentEntryTeacher].name}
                                 </div>
                               </div>
                             )}
@@ -692,8 +875,8 @@ export default function GrammarPage() {
                             <div className="flex-shrink-0 w-10 h-10 mr-2 relative">
                               <div className="absolute inset-0 rounded-full overflow-hidden">
                                 <Image
-                                  src={teacherInfo[userProfile?.preferredTeacher || 'taro'].image}
-                                  alt={teacherInfo[userProfile?.preferredTeacher || 'taro'].name}
+                                  src={teacherInfo[currentEntryTeacher].image}
+                                  alt={teacherInfo[currentEntryTeacher].name}
                                   fill
                                   style={{ objectFit: 'cover' }}
                                 />
